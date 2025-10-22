@@ -291,3 +291,56 @@ func handleNewClient(client kephasnet.Client) {
     }()
 }
 ```
+
+## Running the Chat Example
+
+A complete chat application example is available in the `examples/js-chat` directory, demonstrating real-world usage of the library with both Go server and JavaScript client.
+
+### Features
+- Real-time chat messaging
+- User authentication
+- Message broadcasting
+- Modern responsive UI
+- JavaScript client library (`kephas-client.js`)
+
+### How to Run
+
+1. **Navigate to the example directory:**
+   ```bash
+   cd examples/js-chat
+   ```
+
+2. **Start the server:**
+   ```bash
+   go run main.go
+   ```
+   
+   The server will start on `http://localhost:8080`
+
+3. **Open the chat client:**
+   - Open your browser and navigate to `http://localhost:8080`
+   - Enter a username and connect
+   - Open multiple browser tabs/windows to test multi-user chat
+
+### Example Structure
+```
+examples/js-chat/
+├── main.go              # Go WebSocket server with chat logic
+├── index.html           # Chat UI (HTML/CSS/JS)
+├── kephas-client.js     # JavaScript client library
+├── go.mod               # Go module dependencies
+└── go.sum
+```
+
+### Key Implementation Details
+
+The chat example demonstrates:
+- **Command-based messaging**: Uses command ID `0x0001` for chat messages
+- **JSON payloads**: Messages are sent as JSON with username, message, and timestamp
+- **Broadcasting**: Server broadcasts messages to all connected clients
+- **Client tracking**: Maintains a list of active clients and handles disconnections
+- **Rate limiting**: Protects against message spam
+- **Auto-reconnection**: Client automatically reconnects on connection loss
+
+You can use this example as a starting point for building your own real-time applications.
+
