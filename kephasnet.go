@@ -75,6 +75,23 @@ type WebsocketServer interface {
 	//	    return a + b, nil
 	//	})
 	RegisterJSONRPCHandler(ctx context.Context, method string, handler func(params map[string]interface{}) (interface{}, error)) error
+
+	// BroadcastCommand sends a command to all connected clients.
+	//
+	// This method is useful for broadcasting messages to all connected clients,
+	// such as chat messages, notifications, or system-wide updates.
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation
+	//   - commandID: The uint32 command identifier
+	//   - payload: The binary payload to send
+	//
+	// Example:
+	//
+	//	// Broadcast a notification to all clients
+	//	data, _ := json.Marshal(notification)
+	//	server.BroadcastCommand(ctx, 0x0100, data)
+	BroadcastCommand(ctx context.Context, commandID uint32, payload []byte) error
 }
 
 // Client represents a connected WebSocket client.
