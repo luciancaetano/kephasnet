@@ -1,0 +1,164 @@
+package kephasnet
+
+import "context"
+
+// WebsocketServer defines the interface for a WebSocket server that uses binary protocol encoding.
+//
+// All messages exchanged between the server and clients are encoded using the internal
+// protocol format with a CommandID (uint32) and binary Payload.
+//
+// Example usage:
+//
+//	import "github.com/luciancaetano/kephasnet/ws"
+//
+//	rateLimitConfig := ws.DefaultRateLimitConfig()
+//	server := ws.New(":8080", rateLimitConfig, ws.AllOrigins())
+//
+//	// Register a handler for command 0x01
+//	server.RegisterHandler(ctx, 0x01, func(payload []byte) ([]byte, error) {
+//	    return []byte("response"), nil
+//	})
+//
+//	server.Start(ctx)
+type WebsocketServer interface {
+	// Start starts the WebSocket server and begins listening for connections.
+	// The server will continue running until Stop is called or the context is cancelled.
+	//
+	// Returns an error if the server is already running or if there's a problem
+	// binding to the network address.
+	Start(ctx context.Context) error
+
+	// Stop gracefully stops the WebSocket server and closes all client connections.
+	// Active connections are given time to close properly.
+	//
+	// Returns an error if there's a problem during shutdown.
+	Stop(ctx context.Context) error
+
+	// RegisterHandler registers a handler function for a specific command ID.
+	//
+	// When a message with the given commandID is received from a client, the handler
+	// function is called with the message payload. The handler can return a response
+	// payload which will be automatically encoded and sent back to the client with
+	// the same command ID.
+	//
+	// If the handler returns an error, an error message is sent to the client.
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation
+	//   - commandID: The uint32 command identifier to handle
+	//   - handler: Function that processes the payload and returns a response
+	//
+	// Example:
+	//
+	//	server.RegisterHandler(ctx, 0x0100, func(payload []byte) ([]byte, error) {
+	//	    // Process login request
+	//	    return loginResponse, nil
+	//	})
+	RegisterHandler(ctx context.Context, commandID uint32, handler func(payload []byte) ([]byte, error)) error
+
+	// RegisterJSONRPCHandler registers a JSON-RPC 2.0 method handler.
+	//
+	// This is an optional feature for compatibility with JSON-RPC clients.
+	// JSON-RPC messages are internally converted to the binary protocol format
+	// using the reserved command ID 0xFFFFFFFF.
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation
+	//   - method: The JSON-RPC method name
+	//   - handler: Function that processes JSON-RPC params and returns a result
+	//
+	// Example:
+	//
+	//	server.RegisterJSONRPCHandler(ctx, "add", func(params map[string]interface{}) (interface{}, error) {
+	//	    a := params["a"].(float64)
+	//	    b := params["b"].(float64)
+	//	    return a + b, nil
+	//	})
+	RegisterJSONRPCHandler(ctx context.Context, method string, handler func(params map[string]interface{}) (interface{}, error)) error
+}
+
+// Client represents a connected WebSocket client.
+//
+// Each client has a unique identifier and maintains its own connection state.
+// The client's context is automatically cancelled when the connection closes.
+//
+// Example usage:
+//
+//	// Send a message to a client
+//	encodedData, _ := protocol.Encode(0x01, []byte("hello"))
+//	client.Send(ctx, encodedData)
+//
+//	// Check if client is still connected
+//	if client.IsAlive() {
+//	    // ...
+//	}
+type Client interface {
+	// ID returns a unique identifier for the connected client.
+	//
+	// The ID is automatically generated when the client connects and remains
+	// constant for the lifetime of the connection.
+	ID() string
+
+	// RemoteAddr returns the client's remote network address.
+	//
+	// This is typically in the format "IP:port", for example "192.168.1.100:54321".
+	RemoteAddr() string
+
+	// Context returns the client's lifecycle context.
+	//
+	// This context is automatically cancelled when the connection closes,
+	// allowing goroutines and operations associated with the client to be
+	// properly cleaned up.
+	//
+	// Example:
+	//
+	//	go func() {
+	//	    <-client.Context().Done()
+	//	    log.Printf("Client %s disconnected", client.ID())
+	//	}()
+	Context() context.Context
+
+	// Send sends binary data to the client over the WebSocket connection.
+	//
+	// The command and payload are automatically encoded using the protocol format
+	// before being sent. The send operation is non-blocking and queued for delivery.
+	//
+	// Returns an error if the connection is closed or the context is cancelled.
+	//
+	// Example:
+	//
+	//	if err := client.Send(ctx, 0x01, []byte("message")); err != nil {
+	//	    log.Printf("Failed to send: %v", err)
+	//	}
+	Send(ctx context.Context, command uint32, payload []byte) error
+
+	// Close closes the client connection gracefully.
+	//
+	// This is equivalent to calling CloseWithCode with websocket.CloseNormalClosure.
+	Close(ctx context.Context) error
+
+	// CloseWithCode closes the connection with a specific WebSocket close code and optional reason.
+	//
+	// Common close codes:
+	//   - 1000 (websocket.CloseNormalClosure): Normal closure
+	//   - 1001 (websocket.CloseGoingAway): Endpoint going away
+	//   - 1002 (websocket.CloseProtocolError): Protocol error
+	//   - 1003 (websocket.CloseUnsupportedData): Unsupported data
+	//
+	// Example:
+	//
+	//	client.CloseWithCode(ctx, 1000, "goodbye")
+	CloseWithCode(ctx context.Context, code int, reason string) error
+
+	// IsAlive returns true if the connection is still active.
+	//
+	// This can be used to check if a client is still connected before
+	// attempting to send messages.
+	//
+	// Example:
+	//
+	//	if client.IsAlive() {
+	//	    client.Send(ctx, data)
+	//	}
+	IsAlive() bool
+}

@@ -1,0 +1,391 @@
+package websocket
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/gorilla/websocket"
+	"golang.org/x/time/rate"
+
+	"github.com/luciancaetano/kephasnet"
+	"github.com/luciancaetano/kephasnet/internal/protocol"
+)
+
+type CheckOriginFn = func(r *http.Request) bool
+
+// RateLimitConfig defines rate limiting configuration for clients
+type RateLimitConfig struct {
+	// MessagesPerSecond defines how many messages a client can send per second
+	MessagesPerSecond rate.Limit
+	// Burst defines the maximum burst size (token bucket capacity)
+	Burst int
+	// Enabled determines if rate limiting is active
+	Enabled bool
+}
+
+// DefaultRateLimitConfig returns the default rate limit configuration
+// Allows 100 messages per second with burst of 200
+func DefaultRateLimitConfig() *RateLimitConfig {
+	return &RateLimitConfig{
+		MessagesPerSecond: 100,
+		Burst:             200,
+		Enabled:           true,
+	}
+}
+
+// NoRateLimit returns a configuration with rate limiting disabled
+func NoRateLimit() *RateLimitConfig {
+	return &RateLimitConfig{
+		Enabled: false,
+	}
+}
+
+// Server implements the WebsocketServer interface
+type Server struct {
+	addr     string
+	server   *http.Server
+	clients  sync.Map // map[string]*Client
+	handlers sync.Map // map[uint32]func(payload []byte) ([]byte, error)
+
+	// JSON-RPC handlers (converted to protocol messages internally)
+	jsonRPCHandlers sync.Map // map[string]func(params map[string]interface{}) (interface{}, error)
+
+	// Rate limiting configuration
+	rateLimitConfig *RateLimitConfig
+
+	mu       sync.RWMutex
+	running  bool
+	upgrader websocket.Upgrader
+}
+
+// NewServerWithRateLimit creates a new WebSocket server with custom rate limiting
+func New(addr string, rateLimitConfig *RateLimitConfig, checkLogin CheckOriginFn) *Server {
+	if rateLimitConfig == nil {
+		rateLimitConfig = DefaultRateLimitConfig()
+	}
+	return &Server{
+		addr:            addr,
+		rateLimitConfig: rateLimitConfig,
+		upgrader: websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin:     checkLogin,
+		},
+	}
+}
+
+// Start starts the WebSocket server
+func (s *Server) Start(ctx context.Context) error {
+	s.mu.Lock()
+	if s.running {
+		s.mu.Unlock()
+		return fmt.Errorf(kephasnet.ErrServerAlreadyRunning)
+	}
+	s.running = true
+	s.mu.Unlock()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", s.handleWebSocket)
+
+	s.server = &http.Server{
+		Addr:    s.addr,
+		Handler: mux,
+	}
+
+	errChan := make(chan error, 1)
+	go func() {
+		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errChan <- err
+		}
+	}()
+
+	// Check for immediate startup errors with a small timeout
+	select {
+	case err := <-errChan:
+		// Reset running state without calling Stop to avoid deadlock
+		s.mu.Lock()
+		s.running = false
+		s.mu.Unlock()
+		return err
+	case <-ctx.Done():
+		// Context cancelled, stop the server
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return s.Stop(stopCtx)
+	case <-time.After(100 * time.Millisecond):
+		// Server started successfully, no immediate errors
+		return nil
+	}
+}
+
+// Stop stops the WebSocket server
+func (s *Server) Stop(ctx context.Context) error {
+	s.mu.Lock()
+	if !s.running {
+		s.mu.Unlock()
+		return nil
+	}
+	s.running = false
+	s.mu.Unlock()
+
+	// Close all client connections
+	s.clients.Range(func(key, value interface{}) bool {
+		if client, ok := value.(*Client); ok {
+			client.Close(ctx)
+		}
+		return true
+	})
+
+	if s.server != nil {
+		return s.server.Shutdown(ctx)
+	}
+	return nil
+}
+
+// RegisterHandler registers a handler for a specific command ID
+// The handler receives the binary payload and returns a binary response
+func (s *Server) RegisterHandler(ctx context.Context, commandID uint32, handler func(payload []byte) ([]byte, error)) error {
+	s.handlers.Store(commandID, handler)
+	return nil
+}
+
+// RegisterJSONRPCHandler registers a JSON-RPC handler for a specific method
+// Internally, JSON-RPC requests are converted to protocol messages
+// This uses the reserved command ID net.CmdJSONRPC
+func (s *Server) RegisterJSONRPCHandler(ctx context.Context, method string, handler func(params map[string]interface{}) (interface{}, error)) error {
+	s.jsonRPCHandlers.Store(method, handler)
+	return nil
+}
+
+// handleWebSocket handles incoming WebSocket connections
+func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := s.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		http.Error(w, "Failed to upgrade connection", http.StatusBadRequest)
+		return
+	}
+
+	client := NewClient(conn, r.RemoteAddr, s.rateLimitConfig)
+	s.clients.Store(client.ID(), client)
+
+	// Start reading messages from client
+	go s.handleClient(client)
+}
+
+// handleClient handles messages from a connected client
+func (s *Server) handleClient(client *Client) {
+	defer func() {
+		s.clients.Delete(client.ID())
+		client.Close(context.Background())
+	}()
+
+	// Set read deadline to prevent indefinite blocking
+	client.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+
+	// Set pong handler to reset read deadline on pong
+	client.conn.SetPongHandler(func(string) error {
+		client.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+
+	for {
+		select {
+		case <-client.Context().Done():
+			return
+		default:
+			_, data, err := client.conn.ReadMessage()
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					fmt.Printf("Unexpected WebSocket close error: %v\n", err)
+				}
+				return
+			}
+
+			// Reset read deadline after successful read
+			client.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+
+			// Check rate limit before processing message
+			if !client.CheckRateLimit(context.Background()) {
+				// Rate limit exceeded, send error and close connection
+				fmt.Printf("Warn: Rate limit exceeded for client client_id=%s remote_addr=%s\n", client.ID(), client.RemoteAddr())
+				client.CloseWithCode(context.Background(), websocket.ClosePolicyViolation, "Rate limit exceeded")
+				return
+			}
+
+			// Decode protocol message
+			commandID, payload, err := protocol.Decode(data)
+			if err != nil {
+				// Invalid protocol message, close connection
+				client.CloseWithCode(context.Background(), websocket.CloseProtocolError, kephasnet.ErrInvalidMessageFormat)
+				return
+			}
+
+			// Handle the message
+			s.handleProtocolMessage(client, commandID, payload)
+		}
+	}
+}
+
+// handleProtocolMessage handles binary protocol messages
+// Handlers are executed in separate goroutines to avoid blocking the read loop
+func (s *Server) handleProtocolMessage(client *Client, commandID uint32, payload []byte) {
+	// Check if this is a JSON-RPC command (reserved command ID)
+	if commandID == kephasnet.CmdJSONRPC {
+		// JSON-RPC also handled in goroutine
+		go s.handleJSONRPCMessage(client, payload)
+		return
+	}
+
+	// Handle normal protocol command
+	if handler, ok := s.handlers.Load(commandID); ok {
+		if handlerFunc, ok := handler.(func(payload []byte) ([]byte, error)); ok {
+			// Execute handler in goroutine to avoid blocking read loop
+			go func(cmd uint32, data []byte) {
+				responsePayload, err := handlerFunc(data)
+				if err != nil {
+					// Send error response with same command ID
+					client.Send(context.Background(), cmd, []byte(err.Error()))
+					return
+				}
+
+				// Send response back to client with same command ID
+				if responsePayload != nil {
+					client.Send(context.Background(), cmd, responsePayload)
+				}
+			}(commandID, payload)
+		}
+	} else {
+		// Unknown command ID
+		go func() {
+			client.Send(context.Background(), commandID, []byte(kephasnet.ErrUnknownCommand))
+		}()
+	}
+}
+
+// JSONRPCRequest represents a JSON-RPC 2.0 request
+type JSONRPCRequest struct {
+	JSONRPC string                 `json:"jsonrpc"`
+	Method  string                 `json:"method"`
+	Params  map[string]interface{} `json:"params,omitempty"`
+	ID      interface{}            `json:"id"`
+}
+
+// JSONRPCResponse represents a JSON-RPC 2.0 response
+type JSONRPCResponse struct {
+	JSONRPC string        `json:"jsonrpc"`
+	Result  interface{}   `json:"result,omitempty"`
+	Error   *JSONRPCError `json:"error,omitempty"`
+	ID      interface{}   `json:"id"`
+}
+
+// JSONRPCError represents a JSON-RPC 2.0 error
+type JSONRPCError struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// handleJSONRPCMessage handles JSON-RPC messages encoded in protocol format
+func (s *Server) handleJSONRPCMessage(client *Client, payload []byte) {
+	var req JSONRPCRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		s.sendJSONRPCError(client, nil, kephasnet.JSONRPCParseError, kephasnet.ErrParseError, nil)
+		return
+	}
+
+	if req.JSONRPC != kephasnet.JSONRPCVersion {
+		s.sendJSONRPCError(client, req.ID, kephasnet.JSONRPCInvalidRequest, kephasnet.ErrInvalidRequest, nil)
+		return
+	}
+
+	handler, ok := s.jsonRPCHandlers.Load(req.Method)
+	if !ok {
+		s.sendJSONRPCError(client, req.ID, kephasnet.JSONRPCMethodNotFound, kephasnet.ErrMethodNotFound, nil)
+		return
+	}
+
+	handlerFunc, ok := handler.(func(params map[string]interface{}) (interface{}, error))
+	if !ok {
+		s.sendJSONRPCError(client, req.ID, kephasnet.JSONRPCInternalError, kephasnet.ErrInternalError, nil)
+		return
+	}
+
+	result, err := handlerFunc(req.Params)
+	if err != nil {
+		s.sendJSONRPCError(client, req.ID, kephasnet.JSONRPCInternalError, err.Error(), nil)
+		return
+	}
+
+	response := JSONRPCResponse{
+		JSONRPC: kephasnet.JSONRPCVersion,
+		Result:  result,
+		ID:      req.ID,
+	}
+
+	responseData, err := json.Marshal(response)
+	if err != nil {
+		s.sendJSONRPCError(client, req.ID, kephasnet.JSONRPCInternalError, kephasnet.ErrInternalError, nil)
+		return
+	}
+
+	// Send JSON-RPC response
+	client.Send(context.Background(), kephasnet.CmdJSONRPC, responseData)
+}
+
+// sendJSONRPCError sends a JSON-RPC error response encoded in protocol format
+func (s *Server) sendJSONRPCError(client *Client, id interface{}, code int, message string, data interface{}) {
+	response := JSONRPCResponse{
+		JSONRPC: kephasnet.JSONRPCVersion,
+		Error: &JSONRPCError{
+			Code:    code,
+			Message: message,
+			Data:    data,
+		},
+		ID: id,
+	}
+
+	responseData, err := json.Marshal(response)
+	if err != nil {
+		// Log error but continue - marshal errors are rare
+		fmt.Printf("Failed to marshal JSON-RPC error response: %v", err)
+		return
+	}
+
+	if err := client.Send(context.Background(), kephasnet.CmdJSONRPC, responseData); err != nil {
+		// Log error - client may have disconnected
+		fmt.Printf("Failed to send JSON-RPC error response to client %s: %v", client.ID(), err)
+	}
+}
+
+// GetClient returns a client by ID
+func (s *Server) GetClient(id string) (*Client, bool) {
+	if client, ok := s.clients.Load(id); ok {
+		return client.(*Client), true
+	}
+	return nil, false
+}
+
+// SendToClient sends a protocol message to a specific client
+func (s *Server) SendToClient(ctx context.Context, clientID string, commandID uint32, payload []byte) error {
+	client, ok := s.GetClient(clientID)
+	if !ok {
+		return fmt.Errorf("%s: %s", kephasnet.ErrClientNotFound, clientID)
+	}
+
+	return client.Send(ctx, commandID, payload)
+}
+
+// BroadcastCommand sends a command to all connected clients
+func (s *Server) BroadcastCommand(ctx context.Context, commandID uint32, payload []byte) error {
+	s.clients.Range(func(key, value interface{}) bool {
+		if client, ok := value.(*Client); ok {
+			client.Send(ctx, commandID, payload)
+		}
+		return true
+	})
+	return nil
+}
