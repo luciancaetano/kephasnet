@@ -14,7 +14,7 @@ import (
 func TestBasicEcho(t *testing.T) {
 	t.Parallel()
 
-	server := ws.New(":18080", ws.DefaultRateLimitConfig(), ws.AllOrigins(), nil)
+	server := ws.New(ws.NewConfig(":18080", ws.DefaultRateLimitConfig(), ws.AllOrigins(), nil, nil))
 	ctx := context.Background()
 
 	const cmdEcho uint32 = 0x0001

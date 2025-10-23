@@ -38,7 +38,7 @@ func startTestServer(t *testing.T, ctx context.Context) kephasnet.WebsocketServe
 	var clientsMu sync.RWMutex
 	clients := make(map[string]kephasnet.Client)
 
-	server := ws.New(testServerAddr, rateLimitConfig, ws.AllOrigins(), func(client kephasnet.Client) {
+	server := ws.New(ws.NewConfig(testServerAddr, rateLimitConfig, ws.AllOrigins(), func(client kephasnet.Client) {
 		// Add client to tracking map
 		clientsMu.Lock()
 		clients[client.ID()] = client
@@ -51,7 +51,7 @@ func startTestServer(t *testing.T, ctx context.Context) kephasnet.WebsocketServe
 			delete(clients, client.ID())
 			clientsMu.Unlock()
 		}()
-	})
+	}, nil))
 
 	// Register chat message handler
 	err := server.RegisterHandler(ctx, ChatMessageCommand, func(client kephasnet.Client, payload []byte) {

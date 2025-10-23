@@ -11,8 +11,14 @@ import "context"
 //
 //	import "github.com/luciancaetano/kephasnet/ws"
 //
-//	rateLimitConfig := ws.DefaultRateLimitConfig()
-//	server := ws.New(":8080", rateLimitConfig, ws.AllOrigins())
+//	config := ws.NewConfig(
+//	    ":8080",
+//	    ws.DefaultRateLimitConfig(),
+//	    ws.AllOrigins(),
+//	    nil,  // OnConnect callback (optional)
+//	    nil,  // OnDisconnect callback (optional)
+//	)
+//	server := ws.New(config)
 //
 //	// Register a handler for command 0x01
 //	server.RegisterHandler(ctx, 0x01, func(client Client, payload []byte) {

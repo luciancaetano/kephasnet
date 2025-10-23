@@ -21,6 +21,7 @@ const (
 	UserLeftCommand    uint32 = 0x0004
 	GetUsersCommand    uint32 = 0x0005
 	UsersListCommand   uint32 = 0x0006
+	UserInfoCommand    uint32 = 0x0008
 )
 
 type ChatMessage struct {
@@ -50,15 +51,30 @@ func NewChatServer(addr string) *ChatServer {
 
 	// Create WebSocket server with rate limiting and connection callback
 	rateLimitConfig := ws.DefaultRateLimitConfig()
-	cs.server = ws.New(addr, rateLimitConfig, ws.AllOrigins(), func(client kephasnet.Client) {
+	cs.server = ws.New(ws.NewConfig(addr, rateLimitConfig, ws.AllOrigins(), func(client kephasnet.Client) {
 		log.Printf("New client connected: ID=%s, RemoteAddr=%s", client.ID(), client.RemoteAddr())
 
-		// Track disconnection
-		go func() {
-			<-client.Context().Done()
-			cs.RemoveUser(client.ID())
-		}()
-	})
+		cs.clientsMux.Lock()
+		cs.clients[client.ID()] = &UserInfo{
+			ID:       client.ID(),
+			Username: "Guest_" + client.ID()[:8],
+			JoinedAt: time.Now(),
+		}
+		cs.clientsMux.Unlock()
+	}, func(client kephasnet.Client, voluntary bool) {
+		log.Printf("Client disconnected: ID=%s, RemoteAddr=%s, Voluntary=%v", client.ID(), client.RemoteAddr(), voluntary)
+
+		cs.clientsMux.Lock()
+		userInfo := cs.clients[client.ID()]
+		delete(cs.clients, client.ID())
+		cs.clientsMux.Unlock()
+
+		// Broadcast user left
+		if userInfo != nil {
+			data, _ := json.Marshal(userInfo)
+			cs.server.BroadcastCommand(context.Background(), UserLeftCommand, data)
+		}
+	}))
 
 	return cs
 }
@@ -71,6 +87,10 @@ func (cs *ChatServer) Start(ctx context.Context) error {
 
 	if err := cs.server.RegisterHandler(ctx, GetUsersCommand, cs.handleGetUsers); err != nil {
 		return fmt.Errorf("failed to register get users handler: %w", err)
+	}
+
+	if err := cs.server.RegisterHandler(ctx, UserInfoCommand, cs.handleUserInfo); err != nil {
+		return fmt.Errorf("failed to register user info handler: %w", err)
 	}
 
 	// Start the server
@@ -119,6 +139,30 @@ func (cs *ChatServer) handleGetUsers(client kephasnet.Client, payload []byte) {
 	// Send users list back to the requesting client
 	if err := client.Send(cs.ctx, UsersListCommand, data); err != nil {
 		log.Printf("Failed to send users list: %v", err)
+	}
+}
+
+func (cs *ChatServer) handleUserInfo(client kephasnet.Client, payload []byte) {
+	var userInfo struct {
+		Username string `json:"username"`
+	}
+
+	if err := json.Unmarshal(payload, &userInfo); err != nil {
+		log.Printf("Invalid user info format: %v", err)
+		return
+	}
+
+	cs.clientsMux.Lock()
+	if user, exists := cs.clients[client.ID()]; exists {
+		user.Username = userInfo.Username
+		log.Printf("User %s set username to: %s", client.ID(), userInfo.Username)
+
+		// Broadcast user joined with actual username
+		data, _ := json.Marshal(user)
+		cs.clientsMux.Unlock()
+		cs.server.BroadcastCommand(cs.ctx, UserJoinedCommand, data)
+	} else {
+		cs.clientsMux.Unlock()
 	}
 }
 

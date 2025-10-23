@@ -146,7 +146,13 @@ func TestNewServer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			server := New(tt.addr, tt.rateLimitConfig, tt.checkOrigin, nil)
+			server := New(&ServerConfig{
+				Addr:               ":8080",
+				RateLimitConfig:    tt.rateLimitConfig,
+				CheckOrigin:        tt.checkOrigin,
+				OnConnect:          nil,
+				OnClientDisconnect: nil,
+			})
 
 			if server == nil {
 				t.Fatal("New() returned nil")
@@ -172,7 +178,13 @@ func TestNewServer(t *testing.T) {
 func TestServerInitialState(t *testing.T) {
 	t.Parallel()
 
-	server := New(":8084", DefaultRateLimitConfig(), nil, nil)
+	server := New(&ServerConfig{
+		Addr:               ":8080",
+		RateLimitConfig:    DefaultRateLimitConfig(),
+		CheckOrigin:        nil,
+		OnConnect:          nil,
+		OnClientDisconnect: nil,
+	})
 
 	if server.running {
 		t.Error("new server should not be running")
@@ -229,7 +241,13 @@ func TestCheckOriginFunction(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			server := New(":8085", NoRateLimit(), tt.checkOrigin, nil)
+			server := New(&ServerConfig{
+				Addr:               ":8080",
+				RateLimitConfig:    NoRateLimit(),
+				CheckOrigin:        tt.checkOrigin,
+				OnConnect:          nil,
+				OnClientDisconnect: nil,
+			})
 
 			if tt.wantNil && server.upgrader.CheckOrigin != nil {
 				t.Error("expected CheckOrigin to be nil")
@@ -265,9 +283,14 @@ func TestRateLimitConfigConcurrency(t *testing.T) {
 
 // BenchmarkNewServer benchmarks server creation
 func BenchmarkNewServer(b *testing.B) {
-	config := DefaultRateLimitConfig()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = New(":8080", config, nil, nil)
+		_ = New(&ServerConfig{
+			Addr:               ":8080",
+			RateLimitConfig:    DefaultRateLimitConfig(),
+			CheckOrigin:        nil,
+			OnConnect:          nil,
+			OnClientDisconnect: nil,
+		})
 	}
 }

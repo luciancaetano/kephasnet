@@ -35,6 +35,21 @@ type CheckOriginFn = func(r *http.Request) bool
 // Avoid long-running operations that could block new connections.
 type OnConnectFn = func(client kephasnet.Client)
 
+// OnClientDisconnectFn is a callback type invoked when a connected client disconnects from the server.
+// The function receives the disconnected client and a boolean that is true when the disconnect was
+// initiated by the client (voluntary), and false for unexpected or server-initiated disconnects.
+// Implementations can use this hook to perform cleanup, logging, resource reclamation, or
+// application-specific notification when a client connection ends.
+type OnClientDisconnectFn = func(client kephasnet.Client, voluntary bool)
+
+type ServerConfig struct {
+	Addr               string
+	RateLimitConfig    *RateLimitConfig
+	CheckOrigin        CheckOriginFn
+	OnConnect          OnConnectFn
+	OnClientDisconnect OnClientDisconnectFn
+}
+
 // RateLimitConfig defines rate limiting configuration for clients
 type RateLimitConfig struct {
 	// MessagesPerSecond defines how many messages a client can send per second
@@ -75,10 +90,11 @@ type Server struct {
 	// Rate limiting configuration
 	rateLimitConfig *RateLimitConfig
 
-	mu        sync.RWMutex
-	running   bool
-	upgrader  websocket.Upgrader
-	onConnect OnConnectFn
+	mu           sync.RWMutex
+	running      bool
+	upgrader     websocket.Upgrader
+	onConnect    OnConnectFn
+	onDisconnect OnClientDisconnectFn
 }
 
 // New creates a new WebSocket server instance with the specified configuration.
@@ -101,18 +117,19 @@ type Server struct {
 //	    func(client kephasnet.Client) {
 //	        log.Printf("Client connected: %s", client.ID())
 //	    })
-func New(addr string, rateLimitConfig *RateLimitConfig, checkLogin CheckOriginFn, onConnect OnConnectFn) *Server {
-	if rateLimitConfig == nil {
-		rateLimitConfig = DefaultRateLimitConfig()
+func New(cfg *ServerConfig) *Server {
+	if cfg.RateLimitConfig == nil {
+		cfg.RateLimitConfig = DefaultRateLimitConfig()
 	}
 	return &Server{
-		addr:            addr,
-		rateLimitConfig: rateLimitConfig,
-		onConnect:       onConnect,
+		addr:            cfg.Addr,
+		rateLimitConfig: cfg.RateLimitConfig,
+		onConnect:       cfg.OnConnect,
+		onDisconnect:    cfg.OnClientDisconnect,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
-			CheckOrigin:     checkLogin,
+			CheckOrigin:     cfg.CheckOrigin,
 		},
 	}
 }
@@ -218,6 +235,11 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 // handleClient handles messages from a connected client
 func (s *Server) handleClient(client *Client) {
 	defer func() {
+		voluntary := client.Context().Err() == context.Canceled
+
+		if s.onDisconnect != nil {
+			s.onDisconnect(client, voluntary)
+		}
 		s.clients.Delete(client.ID())
 		client.Close(context.Background())
 	}()

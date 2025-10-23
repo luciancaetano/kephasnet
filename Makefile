@@ -1,6 +1,6 @@
 .PHONY: test
 
-.PHONY: test test-unit test-e2e test-stress test-coverage clean help
+.PHONY: test test-unit test-e2e test-stress test-coverage chat-example clean help
 
 # Default target
 help:
@@ -10,6 +10,7 @@ help:
 	@echo "  make test-e2e      - Run end-to-end tests only"
 	@echo "  make test-stress   - Run stress tests (requires high ulimit)"
 	@echo "  make test-coverage - Run tests with coverage report"
+	@echo "  chat-example	 	- Run the JS chat example"
 	@echo "  make clean         - Clean test cache and coverage files"
 
 # Run all tests
