@@ -27,18 +27,31 @@ type ChatMessage struct {
 }
 
 // startTestServer starts a simple chat server for stress testing
-func startTestServer(t *testing.T, ctx context.Context) *ws.Server {
+func startTestServer(t *testing.T, ctx context.Context) kephasnet.WebsocketServer {
 	rateLimitConfig := &ws.RateLimitConfig{
 		MessagesPerSecond: 1000,
 		Burst:             2000,
 		Enabled:           true,
 	}
 
-	server := ws.New(testServerAddr, rateLimitConfig, ws.AllOrigins())
-
 	// Track clients
 	var clientsMu sync.RWMutex
 	clients := make(map[string]kephasnet.Client)
+
+	server := ws.New(testServerAddr, rateLimitConfig, ws.AllOrigins(), func(client kephasnet.Client) {
+		// Add client to tracking map
+		clientsMu.Lock()
+		clients[client.ID()] = client
+		clientsMu.Unlock()
+
+		// Remove client when disconnected
+		go func() {
+			<-client.Context().Done()
+			clientsMu.Lock()
+			delete(clients, client.ID())
+			clientsMu.Unlock()
+		}()
+	})
 
 	// Register chat message handler
 	err := server.RegisterHandler(ctx, ChatMessageCommand, func(payload []byte) ([]byte, error) {
@@ -65,20 +78,6 @@ func startTestServer(t *testing.T, ctx context.Context) *ws.Server {
 	if err != nil {
 		t.Fatalf("Failed to register handler: %v", err)
 	}
-
-	// Handle new connections
-	server.OnConnect(func(client kephasnet.Client) {
-		clientsMu.Lock()
-		clients[client.ID()] = client
-		clientsMu.Unlock()
-
-		go func() {
-			<-client.Context().Done()
-			clientsMu.Lock()
-			delete(clients, client.ID())
-			clientsMu.Unlock()
-		}()
-	})
 
 	go func() {
 		if err := server.Start(ctx); err != nil && ctx.Err() == nil {

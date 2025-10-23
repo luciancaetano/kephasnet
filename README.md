@@ -47,8 +47,10 @@ func main() {
         Enabled:           true,
     }
 
-    // Create server with rate limiting and origin check
-    server := ws.New(":8080", rateLimitConfig, ws.AllOrigins())
+    // Create server with rate limiting, origin check, and connection callback
+    server := ws.New(":8080", rateLimitConfig, ws.AllOrigins(), func(client kephasnet.Client) {
+        log.Printf("Client connected: %s from %s", client.ID(), client.RemoteAddr())
+    })
 
     // Register a handler
     err := server.RegisterHandler(ctx, 0x0100, func(payload []byte) ([]byte, error) {
@@ -102,12 +104,12 @@ In addition to the binary command protocol, the library provides optional JSON-R
 Default limits:
 ```go
 rateLimitConfig := ws.DefaultRateLimitConfig() // 100 msg/s, burst 200
-server := ws.New(":8080", rateLimitConfig, ws.AllOrigins())
+server := ws.New(":8080", rateLimitConfig, ws.AllOrigins(), nil)
 ```
 No rate limiting:
 ```go
 rateLimitConfig := ws.NoRateLimit()
-server := ws.New(":8080", rateLimitConfig, ws.AllOrigins())
+server := ws.New(":8080", rateLimitConfig, ws.AllOrigins(), nil)
 ```
 Custom server:
 ```go
@@ -116,7 +118,7 @@ rateLimitConfig := &ws.RateLimitConfig{
     Burst:             100,
     Enabled:           true,
 }
-server := ws.New(":8080", rateLimitConfig, ws.AllOrigins())
+server := ws.New(":8080", rateLimitConfig, ws.AllOrigins(), nil)
 ```
 Custom origin check:
 ```go
@@ -124,8 +126,67 @@ checkOrigin := func(r *http.Request) bool {
     origin := r.Header.Get("Origin")
     return origin == "https://yourdomain.com"
 }
-server := ws.New(":8080", ws.DefaultRateLimitConfig(), checkOrigin)
+server := ws.New(":8080", ws.DefaultRateLimitConfig(), checkOrigin, nil)
 ```
+
+## Connection Lifecycle
+
+### OnConnect Callback
+
+The `OnConnect` callback is called when a new client successfully connects to the server. It's executed after the WebSocket handshake completes but before the message reading loop starts.
+
+```go
+server := ws.New(":8080", ws.DefaultRateLimitConfig(), ws.AllOrigins(), 
+    func(client kephasnet.Client) {
+        log.Printf("New connection: ID=%s, RemoteAddr=%s", client.ID(), client.RemoteAddr())
+        
+        // Send a welcome message
+        welcomeMsg := []byte("Welcome to the server!")
+        client.Send(context.Background(), 0x0001, welcomeMsg)
+    })
+```
+
+**Common use cases:**
+- **Track connections**: Add client to a registry for broadcasting
+- **Send welcome messages**: Greet the client or send initial state
+- **Authentication**: Verify credentials before accepting messages
+- **Initialize state**: Set up client-specific data structures
+
+**Important notes:**
+- The callback is optional (can be `nil`)
+- Runs synchronously during connection setup
+- Avoid long-running operations that could block other connections
+- The client is already added to the server's internal client map
+- The client's context is active and can be used for cleanup tracking
+
+### Connection Tracking Example
+
+```go
+var (
+    clientsMu sync.RWMutex
+    clients   = make(map[string]kephasnet.Client)
+)
+
+server := ws.New(":8080", ws.DefaultRateLimitConfig(), ws.AllOrigins(),
+    func(client kephasnet.Client) {
+        // Add client to tracking map
+        clientsMu.Lock()
+        clients[client.ID()] = client
+        clientsMu.Unlock()
+        
+        // Remove client when disconnected
+        go func() {
+            <-client.Context().Done()
+            clientsMu.Lock()
+            delete(clients, client.ID())
+            clientsMu.Unlock()
+            log.Printf("Client disconnected: %s", client.ID())
+        }()
+        
+        log.Printf("Client connected: %s (Total: %d)", client.ID(), len(clients))
+    })
+```
+
 
 ## Handlers
 

@@ -11,9 +11,24 @@ type RateLimitConfig = websocket.RateLimitConfig
 type CheckOriginFn = websocket.CheckOriginFn
 type OnConnectFn = websocket.OnConnectFn
 
-// NewServer creates a new WebSocket server
-func New(addr string, rateLimnit *RateLimitConfig, onCheckOrigin CheckOriginFn, onConnect OnConnectFn) kephasnet.WebsocketServer {
-	return websocket.New(addr, rateLimnit, onCheckOrigin, onConnect)
+// New creates a new WebSocket server with rate limiting and connection callbacks.
+//
+// Parameters:
+//   - addr: The server address (e.g., ":8080" or "localhost:8080")
+//   - rateLimitConfig: Rate limiting configuration. Use DefaultRateLimitConfig() or NoRateLimit()
+//   - onCheckOrigin: Function to validate WebSocket origins. Use AllOrigins() to allow all (dev only)
+//   - onConnect: Optional callback function called when a client connects. Can be nil.
+//     This is called after the WebSocket handshake completes but before
+//     the message reading loop starts. Use this to track connections,
+//     send welcome messages, or perform authentication.
+//
+// Example:
+//
+//	server := ws.New(":8080", ws.DefaultRateLimitConfig(), ws.AllOrigins(), func(client kephasnet.Client) {
+//	    log.Printf("Client connected: %s", client.ID())
+//	})
+func New(addr string, rateLimitConfig *RateLimitConfig, onCheckOrigin CheckOriginFn, onConnect OnConnectFn) kephasnet.WebsocketServer {
+	return websocket.New(addr, rateLimitConfig, onCheckOrigin, onConnect)
 }
 
 // AllOrigins returns the default checkOrigin function that allows all origins

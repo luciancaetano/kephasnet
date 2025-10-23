@@ -48,9 +48,17 @@ func NewChatServer(addr string) *ChatServer {
 		ctx:     context.Background(),
 	}
 
-	// Create WebSocket server with rate limiting
+	// Create WebSocket server with rate limiting and connection callback
 	rateLimitConfig := ws.DefaultRateLimitConfig()
-	cs.server = ws.New(addr, rateLimitConfig, ws.AllOrigins())
+	cs.server = ws.New(addr, rateLimitConfig, ws.AllOrigins(), func(client kephasnet.Client) {
+		log.Printf("New client connected: ID=%s, RemoteAddr=%s", client.ID(), client.RemoteAddr())
+
+		// Track disconnection
+		go func() {
+			<-client.Context().Done()
+			cs.RemoveUser(client.ID())
+		}()
+	})
 
 	return cs
 }

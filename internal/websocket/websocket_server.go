@@ -15,8 +15,25 @@ import (
 	"github.com/luciancaetano/kephasnet/internal/protocol"
 )
 
+// CheckOriginFn is a function that validates the origin of a WebSocket connection request.
+// It receives the HTTP request and returns true if the origin is allowed, false otherwise.
+// Use this to implement CORS policies for your WebSocket server.
 type CheckOriginFn = func(r *http.Request) bool
-type OnConnectFn = func(clinet kephasnet.Client)
+
+// OnConnectFn is a callback function that is called when a new client connects.
+// It is called after the WebSocket handshake completes and before the message
+// reading loop starts. This is the ideal place to:
+//   - Track connected clients
+//   - Send welcome messages
+//   - Perform authentication or authorization
+//   - Initialize client-specific state
+//
+// The callback receives the client instance which can be used to send messages
+// or access client information (ID, remote address, context).
+//
+// Note: This function is called synchronously during connection setup.
+// Avoid long-running operations that could block new connections.
+type OnConnectFn = func(client kephasnet.Client)
 
 // RateLimitConfig defines rate limiting configuration for clients
 type RateLimitConfig struct {
@@ -64,7 +81,26 @@ type Server struct {
 	onConnect OnConnectFn
 }
 
-// NewServerWithRateLimit creates a new WebSocket server with custom rate limiting
+// New creates a new WebSocket server instance with the specified configuration.
+//
+// Parameters:
+//   - addr: The network address to listen on (e.g., ":8080" or "localhost:8080")
+//   - rateLimitConfig: Rate limiting configuration. If nil, DefaultRateLimitConfig() is used.
+//   - checkOrigin: Function to validate WebSocket connection origins (CORS).
+//     Return true to allow the connection, false to reject it.
+//   - onConnect: Optional callback called when a client connects. Can be nil.
+//     Called after handshake but before message reading starts.
+//
+// The server uses the Gorilla WebSocket library with read/write buffer sizes of 1024 bytes.
+// Rate limiting is applied per-client using a token bucket algorithm.
+//
+// Example:
+//
+//	server := New(":8080", DefaultRateLimitConfig(),
+//	    func(r *http.Request) bool { return true },
+//	    func(client kephasnet.Client) {
+//	        log.Printf("Client connected: %s", client.ID())
+//	    })
 func New(addr string, rateLimitConfig *RateLimitConfig, checkLogin CheckOriginFn, onConnect OnConnectFn) *Server {
 	if rateLimitConfig == nil {
 		rateLimitConfig = DefaultRateLimitConfig()
@@ -195,7 +231,12 @@ func (s *Server) handleClient(client *Client) {
 		return nil
 	})
 
-	s.onConnect(client)
+	// Call onConnect callback if provided
+	// This is the ideal place to send welcome messages, track connections,
+	// or perform initial authentication
+	if s.onConnect != nil {
+		s.onConnect(client)
+	}
 
 	for {
 		select {
