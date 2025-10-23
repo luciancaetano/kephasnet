@@ -9,10 +9,11 @@ import (
 
 type RateLimitConfig = websocket.RateLimitConfig
 type CheckOriginFn = websocket.CheckOriginFn
+type OnConnectFn = websocket.OnConnectFn
 
 // NewServer creates a new WebSocket server
-func New(addr string, rateLimnit *RateLimitConfig, onCheckOrigin CheckOriginFn) kephasnet.WebsocketServer {
-	return websocket.New(addr, rateLimnit, onCheckOrigin)
+func New(addr string, rateLimnit *RateLimitConfig, onCheckOrigin CheckOriginFn, onConnect OnConnectFn) kephasnet.WebsocketServer {
+	return websocket.New(addr, rateLimnit, onCheckOrigin, onConnect)
 }
 
 // AllOrigins returns the default checkOrigin function that allows all origins

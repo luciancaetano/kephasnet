@@ -16,6 +16,7 @@ import (
 )
 
 type CheckOriginFn = func(r *http.Request) bool
+type OnConnectFn = func(clinet kephasnet.Client)
 
 // RateLimitConfig defines rate limiting configuration for clients
 type RateLimitConfig struct {
@@ -57,19 +58,21 @@ type Server struct {
 	// Rate limiting configuration
 	rateLimitConfig *RateLimitConfig
 
-	mu       sync.RWMutex
-	running  bool
-	upgrader websocket.Upgrader
+	mu        sync.RWMutex
+	running   bool
+	upgrader  websocket.Upgrader
+	onConnect OnConnectFn
 }
 
 // NewServerWithRateLimit creates a new WebSocket server with custom rate limiting
-func New(addr string, rateLimitConfig *RateLimitConfig, checkLogin CheckOriginFn) *Server {
+func New(addr string, rateLimitConfig *RateLimitConfig, checkLogin CheckOriginFn, onConnect OnConnectFn) *Server {
 	if rateLimitConfig == nil {
 		rateLimitConfig = DefaultRateLimitConfig()
 	}
 	return &Server{
 		addr:            addr,
 		rateLimitConfig: rateLimitConfig,
+		onConnect:       onConnect,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -191,6 +194,8 @@ func (s *Server) handleClient(client *Client) {
 		client.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
+
+	s.onConnect(client)
 
 	for {
 		select {
