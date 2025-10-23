@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/luciancaetano/kephasnet"
-	"github.com/luciancaetano/kephasnet/ws"
+	"github.com/luciancaetano/knet"
+	"github.com/luciancaetano/knet/ws"
 )
 
 const (
@@ -27,7 +27,7 @@ type ChatMessage struct {
 }
 
 // startTestServer starts a simple chat server for stress testing
-func startTestServer(t *testing.T, ctx context.Context) kephasnet.WebsocketServer {
+func startTestServer(t *testing.T, ctx context.Context) knet.WebsocketServer {
 	rateLimitConfig := &ws.RateLimitConfig{
 		MessagesPerSecond: 1000,
 		Burst:             2000,
@@ -36,9 +36,9 @@ func startTestServer(t *testing.T, ctx context.Context) kephasnet.WebsocketServe
 
 	// Track clients
 	var clientsMu sync.RWMutex
-	clients := make(map[string]kephasnet.Client)
+	clients := make(map[string]knet.Client)
 
-	server := ws.New(ws.NewConfig(testServerAddr, rateLimitConfig, ws.AllOrigins(), func(client kephasnet.Client) {
+	server := ws.New(ws.NewConfig(testServerAddr, rateLimitConfig, ws.AllOrigins(), func(client knet.Client) {
 		// Add client to tracking map
 		clientsMu.Lock()
 		clients[client.ID()] = client
@@ -54,7 +54,7 @@ func startTestServer(t *testing.T, ctx context.Context) kephasnet.WebsocketServe
 	}, nil))
 
 	// Register chat message handler
-	err := server.RegisterHandler(ctx, ChatMessageCommand, func(client kephasnet.Client, payload []byte) {
+	err := server.RegisterHandler(ctx, ChatMessageCommand, func(client knet.Client, payload []byte) {
 		var msg ChatMessage
 		if err := json.Unmarshal(payload, &msg); err != nil {
 			return

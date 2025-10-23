@@ -1,10 +1,10 @@
-module github.com/luciancaetano/kephasnet/tests/stress
+module github.com/luciancaetano/knet/tests/stress
 
 go 1.25.1
 
 require (
 	github.com/gorilla/websocket v1.5.3
-	github.com/luciancaetano/kephasnet v0.0.0
+	github.com/luciancaetano/knet v0.0.0
 )
 
 require (
@@ -12,4 +12,4 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 )
 
-replace github.com/luciancaetano/kephasnet => ../..
+replace github.com/luciancaetano/knet => ../..

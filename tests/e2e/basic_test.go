@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/luciancaetano/kephasnet"
-	"github.com/luciancaetano/kephasnet/internal/protocol"
-	"github.com/luciancaetano/kephasnet/ws"
+	"github.com/luciancaetano/knet"
+	"github.com/luciancaetano/knet/internal/protocol"
+	"github.com/luciancaetano/knet/ws"
 )
 
 func TestBasicEcho(t *testing.T) {
@@ -19,7 +19,7 @@ func TestBasicEcho(t *testing.T) {
 
 	const cmdEcho uint32 = 0x0001
 	// Handler receives client and payload, sends response asynchronously
-	server.RegisterHandler(ctx, cmdEcho, func(client kephasnet.Client, payload []byte) {
+	server.RegisterHandler(ctx, cmdEcho, func(client knet.Client, payload []byte) {
 		// Echo back to the client
 		client.Send(context.Background(), cmdEcho, payload)
 	})

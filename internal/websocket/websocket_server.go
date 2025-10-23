@@ -11,8 +11,8 @@ import (
 	"github.com/gorilla/websocket"
 	"golang.org/x/time/rate"
 
-	"github.com/luciancaetano/kephasnet"
-	"github.com/luciancaetano/kephasnet/internal/protocol"
+	"github.com/luciancaetano/knet"
+	"github.com/luciancaetano/knet/internal/protocol"
 )
 
 // CheckOriginFn is a function that validates the origin of a WebSocket connection request.
@@ -33,14 +33,14 @@ type CheckOriginFn = func(r *http.Request) bool
 //
 // Note: This function is called synchronously during connection setup.
 // Avoid long-running operations that could block new connections.
-type OnConnectFn = func(client kephasnet.Client)
+type OnConnectFn = func(client knet.Client)
 
 // OnClientDisconnectFn is a callback type invoked when a connected client disconnects from the server.
 // The function receives the disconnected client and a boolean that is true when the disconnect was
 // initiated by the client (voluntary), and false for unexpected or server-initiated disconnects.
 // Implementations can use this hook to perform cleanup, logging, resource reclamation, or
 // application-specific notification when a client connection ends.
-type OnClientDisconnectFn = func(client kephasnet.Client, voluntary bool)
+type OnClientDisconnectFn = func(client knet.Client, voluntary bool)
 
 type ServerConfig struct {
 	Addr               string
@@ -82,7 +82,7 @@ type Server struct {
 	addr     string
 	server   *http.Server
 	clients  sync.Map // map[string]*Client
-	handlers sync.Map // map[uint32]func(client kephasnet.Client, payload []byte)
+	handlers sync.Map // map[uint32]func(client knet.Client, payload []byte)
 
 	// JSON-RPC handlers (converted to protocol messages internally)
 	jsonRPCHandlers sync.Map // map[string]func(params map[string]interface{}) (interface{}, error)
@@ -114,7 +114,7 @@ type Server struct {
 //
 //	server := New(":8080", DefaultRateLimitConfig(),
 //	    func(r *http.Request) bool { return true },
-//	    func(client kephasnet.Client) {
+//	    func(client knet.Client) {
 //	        log.Printf("Client connected: %s", client.ID())
 //	    })
 func New(cfg *ServerConfig) *Server {
@@ -139,7 +139,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.mu.Lock()
 	if s.running {
 		s.mu.Unlock()
-		return fmt.Errorf(kephasnet.ErrServerAlreadyRunning)
+		return fmt.Errorf(knet.ErrServerAlreadyRunning)
 	}
 	s.running = true
 	s.mu.Unlock()
@@ -204,7 +204,7 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // RegisterHandler registers a handler for a specific command ID
 // The handler is executed asynchronously and receives the client and payload
-func (s *Server) RegisterHandler(ctx context.Context, commandID uint32, handler func(client kephasnet.Client, payload []byte)) error {
+func (s *Server) RegisterHandler(ctx context.Context, commandID uint32, handler func(client knet.Client, payload []byte)) error {
 	s.handlers.Store(commandID, handler)
 	return nil
 }
@@ -288,7 +288,7 @@ func (s *Server) handleClient(client *Client) {
 			commandID, payload, err := protocol.Decode(data)
 			if err != nil {
 				// Invalid protocol message, close connection
-				client.CloseWithCode(context.Background(), websocket.CloseProtocolError, kephasnet.ErrInvalidMessageFormat)
+				client.CloseWithCode(context.Background(), websocket.CloseProtocolError, knet.ErrInvalidMessageFormat)
 				return
 			}
 
@@ -302,7 +302,7 @@ func (s *Server) handleClient(client *Client) {
 // Handlers are executed in separate goroutines to avoid blocking the read loop
 func (s *Server) handleProtocolMessage(client *Client, commandID uint32, payload []byte) {
 	// Check if this is a JSON-RPC command (reserved command ID)
-	if commandID == kephasnet.CmdJSONRPC {
+	if commandID == knet.CmdJSONRPC {
 		// JSON-RPC also handled in goroutine
 		go s.handleJSONRPCMessage(client, payload)
 		return
@@ -310,7 +310,7 @@ func (s *Server) handleProtocolMessage(client *Client, commandID uint32, payload
 
 	// Handle normal protocol command
 	if handler, ok := s.handlers.Load(commandID); ok {
-		if handlerFunc, ok := handler.(func(kephasnet.Client, []byte)); ok {
+		if handlerFunc, ok := handler.(func(knet.Client, []byte)); ok {
 			// Execute handler in goroutine (async, client decides if/when to respond)
 			go handlerFunc(client, payload)
 		}
@@ -345,53 +345,53 @@ type JSONRPCError struct {
 func (s *Server) handleJSONRPCMessage(client *Client, payload []byte) {
 	var req JSONRPCRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
-		s.sendJSONRPCError(client, nil, kephasnet.JSONRPCParseError, kephasnet.ErrParseError, nil)
+		s.sendJSONRPCError(client, nil, knet.JSONRPCParseError, knet.ErrParseError, nil)
 		return
 	}
 
-	if req.JSONRPC != kephasnet.JSONRPCVersion {
-		s.sendJSONRPCError(client, req.ID, kephasnet.JSONRPCInvalidRequest, kephasnet.ErrInvalidRequest, nil)
+	if req.JSONRPC != knet.JSONRPCVersion {
+		s.sendJSONRPCError(client, req.ID, knet.JSONRPCInvalidRequest, knet.ErrInvalidRequest, nil)
 		return
 	}
 
 	handler, ok := s.jsonRPCHandlers.Load(req.Method)
 	if !ok {
-		s.sendJSONRPCError(client, req.ID, kephasnet.JSONRPCMethodNotFound, kephasnet.ErrMethodNotFound, nil)
+		s.sendJSONRPCError(client, req.ID, knet.JSONRPCMethodNotFound, knet.ErrMethodNotFound, nil)
 		return
 	}
 
 	handlerFunc, ok := handler.(func(params map[string]interface{}) (interface{}, error))
 	if !ok {
-		s.sendJSONRPCError(client, req.ID, kephasnet.JSONRPCInternalError, kephasnet.ErrInternalError, nil)
+		s.sendJSONRPCError(client, req.ID, knet.JSONRPCInternalError, knet.ErrInternalError, nil)
 		return
 	}
 
 	result, err := handlerFunc(req.Params)
 	if err != nil {
-		s.sendJSONRPCError(client, req.ID, kephasnet.JSONRPCInternalError, err.Error(), nil)
+		s.sendJSONRPCError(client, req.ID, knet.JSONRPCInternalError, err.Error(), nil)
 		return
 	}
 
 	response := JSONRPCResponse{
-		JSONRPC: kephasnet.JSONRPCVersion,
+		JSONRPC: knet.JSONRPCVersion,
 		Result:  result,
 		ID:      req.ID,
 	}
 
 	responseData, err := json.Marshal(response)
 	if err != nil {
-		s.sendJSONRPCError(client, req.ID, kephasnet.JSONRPCInternalError, kephasnet.ErrInternalError, nil)
+		s.sendJSONRPCError(client, req.ID, knet.JSONRPCInternalError, knet.ErrInternalError, nil)
 		return
 	}
 
 	// Send JSON-RPC response
-	client.Send(context.Background(), kephasnet.CmdJSONRPC, responseData)
+	client.Send(context.Background(), knet.CmdJSONRPC, responseData)
 }
 
 // sendJSONRPCError sends a JSON-RPC error response encoded in protocol format
 func (s *Server) sendJSONRPCError(client *Client, id interface{}, code int, message string, data interface{}) {
 	response := JSONRPCResponse{
-		JSONRPC: kephasnet.JSONRPCVersion,
+		JSONRPC: knet.JSONRPCVersion,
 		Error: &JSONRPCError{
 			Code:    code,
 			Message: message,
@@ -407,7 +407,7 @@ func (s *Server) sendJSONRPCError(client *Client, id interface{}, code int, mess
 		return
 	}
 
-	if err := client.Send(context.Background(), kephasnet.CmdJSONRPC, responseData); err != nil {
+	if err := client.Send(context.Background(), knet.CmdJSONRPC, responseData); err != nil {
 		// Log error - client may have disconnected
 		fmt.Printf("Failed to send JSON-RPC error response to client %s: %v", client.ID(), err)
 	}
@@ -425,7 +425,7 @@ func (s *Server) GetClient(id string) (*Client, bool) {
 func (s *Server) SendToClient(ctx context.Context, clientID string, commandID uint32, payload []byte) error {
 	client, ok := s.GetClient(clientID)
 	if !ok {
-		return fmt.Errorf("%s: %s", kephasnet.ErrClientNotFound, clientID)
+		return fmt.Errorf("%s: %s", knet.ErrClientNotFound, clientID)
 	}
 
 	return client.Send(ctx, commandID, payload)

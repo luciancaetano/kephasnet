@@ -1,13 +1,13 @@
-# 🚀 KephasNet
+# 🚀 knet
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/luciancaetano/kephasnet.svg)](https://pkg.go.dev/github.com/luciancaetano/kephasnet)
-[![Go Report Card](https://goreportcard.com/badge/github.com/luciancaetano/kephasnet)](https://goreportcard.com/report/github.com/luciancaetano/kephasnet)
+[![Go Reference](https://pkg.go.dev/badge/github.com/luciancaetano/knet.svg)](https://pkg.go.dev/github.com/luciancaetano/knet)
+[![Go Report Card](https://goreportcard.com/badge/github.com/luciancaetano/knet)](https://goreportcard.com/report/github.com/luciancaetano/knet)
 
 A **high-performance** Go library for building game servers and real-time applications using WebSocket communication. Implements a command pattern protocol with efficient binary encoding and optional JSON-RPC 2.0 support.
 
 ## 📖 Overview
 
-KephasNet provides a robust WebSocket server framework designed for game servers and real-time applications that require:
+knet provides a robust WebSocket server framework designed for game servers and real-time applications that require:
 
 - **🎯 Command Pattern Protocol**: Efficient binary protocol with 4-byte command IDs + binary payload
 - **📡 JSON-RPC 2.0 Support**: Optional JSON-RPC handler registration for standard RPC workflows
@@ -33,7 +33,7 @@ KephasNet provides a robust WebSocket server framework designed for game servers
 ## 📦 Installation
 
 ```bash
-go get github.com/luciancaetano/kephasnet
+go get github.com/luciancaetano/knet
 ```
 
 **Dependencies:**
@@ -46,7 +46,7 @@ go get github.com/google/uuid
 Or use the module system (recommended):
 ```bash
 go mod init your-project
-go get github.com/luciancaetano/kephasnet
+go get github.com/luciancaetano/knet
 ```
 
 ## 🚀 Quick Start
@@ -59,8 +59,8 @@ import (
     "log"
     "time"
 
-    "github.com/luciancaetano/kephasnet"
-    "github.com/luciancaetano/kephasnet/ws"
+    "github.com/luciancaetano/knet"
+    "github.com/luciancaetano/knet/ws"
 )
 
 func main() {
@@ -71,14 +71,14 @@ func main() {
         ":8080",                        // Server address
         ws.DefaultRateLimitConfig(),    // Rate limiting (100 msg/s, burst 200)
         ws.AllOrigins(),                // Origin check (use custom in production!)
-        func(client kephasnet.Client) { // OnConnect callback
+        func(client knet.Client) { // OnConnect callback
             log.Printf("✅ Client connected: %s from %s", client.ID(), client.RemoteAddr())
             
             // Send welcome message
             welcomeMsg := []byte("Welcome to the server!")
             client.Send(ctx, 0x0001, welcomeMsg)
         },
-        func(client kephasnet.Client) { // OnDisconnect callback
+        func(client knet.Client) { // OnDisconnect callback
             log.Printf("👋 Client disconnected: %s", client.ID())
         },
     )
@@ -88,7 +88,7 @@ func main() {
 
     // Register an async command handler (0x0100 = player login)
     // Handlers receive the client and payload, no return value (fire-and-forget)
-    err := server.RegisterHandler(ctx, 0x0100, func(client kephasnet.Client, payload []byte) {
+    err := server.RegisterHandler(ctx, 0x0100, func(client knet.Client, payload []byte) {
         log.Printf("📨 Received login request: %s", string(payload))
         
         // Process the login
@@ -226,11 +226,11 @@ config := ws.NewConfig(
     ":8080",
     ws.DefaultRateLimitConfig(),
     ws.AllOrigins(),
-    func(client kephasnet.Client) {
+    func(client knet.Client) {
         log.Printf("✅ Client connected: %s", client.ID())
         // Send welcome message, initialize state, etc.
     },
-    func(client kephasnet.Client) {
+    func(client knet.Client) {
         log.Printf("👋 Client disconnected: %s", client.ID())
         // Cleanup resources, update metrics, etc.
     },
@@ -254,14 +254,14 @@ config := ws.NewConfig(
     ":8080",
     ws.DefaultRateLimitConfig(),
     ws.AllOrigins(),
-    func(client kephasnet.Client) {
+    func(client knet.Client) {
         log.Printf("🎉 New connection: ID=%s, RemoteAddr=%s", client.ID(), client.RemoteAddr())
         
         // Send a welcome message
         welcomeMsg := []byte("Welcome to the server!")
         client.Send(context.Background(), 0x0001, welcomeMsg)
     },
-    func(client kephasnet.Client) {
+    func(client knet.Client) {
         log.Printf("👋 Client disconnected: ID=%s", client.ID())
         
         // Cleanup resources, update metrics, broadcast to other clients, etc.
@@ -301,14 +301,14 @@ Track all connected clients with automatic cleanup using OnDisconnect:
 ```go
 var (
     clientsMu sync.RWMutex
-    clients   = make(map[string]kephasnet.Client)
+    clients   = make(map[string]knet.Client)
 )
 
 config := ws.NewConfig(
     ":8080",
     ws.DefaultRateLimitConfig(),
     ws.AllOrigins(),
-    func(client kephasnet.Client) {
+    func(client knet.Client) {
         // Add client to tracking map
         clientsMu.Lock()
         clients[client.ID()] = client
@@ -317,7 +317,7 @@ config := ws.NewConfig(
         
         log.Printf("✅ Client connected: %s (Total: %d)", client.ID(), count)
     },
-    func(client kephasnet.Client) {
+    func(client knet.Client) {
         // Remove client from tracking map
         clientsMu.Lock()
         delete(clients, client.ID())
@@ -332,7 +332,7 @@ server := ws.New(config)
 
 ## 🎯 Message Handlers
 
-KephasNet supports two communication patterns:
+knet supports two communication patterns:
 
 ### 1. Command Pattern (Asynchronous - Fire-and-Forget)
 
@@ -346,7 +346,7 @@ Handlers are executed asynchronously. They receive the client and payload but do
 
 ```go
 // Example: Player movement command (ID 0x0100)
-server.RegisterHandler(ctx, 0x0100, func(client kephasnet.Client, payload []byte) {
+server.RegisterHandler(ctx, 0x0100, func(client knet.Client, payload []byte) {
     if len(payload) == 0 {
         log.Println("Empty payload received")
         return
@@ -363,7 +363,7 @@ server.RegisterHandler(ctx, 0x0100, func(client kephasnet.Client, payload []byte
 })
 
 // Example: Chat message command (ID 0x0200)
-server.RegisterHandler(ctx, 0x0200, func(client kephasnet.Client, payload []byte) {
+server.RegisterHandler(ctx, 0x0200, func(client knet.Client, payload []byte) {
     chatMsg := processChatMessage(payload)
     
     // Broadcast to all clients (including sender)
@@ -371,7 +371,7 @@ server.RegisterHandler(ctx, 0x0200, func(client kephasnet.Client, payload []byte
 })
 
 // Example: Notification handler (ID 0x0300) - no response needed
-server.RegisterHandler(ctx, 0x0300, func(client kephasnet.Client, payload []byte) {
+server.RegisterHandler(ctx, 0x0300, func(client knet.Client, payload []byte) {
     log.Printf("Notification received from %s: %s", client.ID(), string(payload))
     // Just log it, no response needed
 })
@@ -490,7 +490,7 @@ go-kephas-net/
 ├── Makefile                   # Build commands
 ├── go.mod                     # Go module definition
 ├── doc.go                     # Package documentation
-├── kephasnet.go              # Public interfaces (WebsocketServer, Client)
+├── knet.go              # Public interfaces (WebsocketServer, Client)
 ├── commands.go               # Constants (command IDs, errors)
 │
 ├── internal/                 # Internal implementation (not part of public API)
@@ -520,14 +520,14 @@ go-kephas-net/
 **Key Design Principles:**
 - 📦 **Use `ws.New()` for server creation** (implementation is internal)
 - 🔒 **Internal packages are not part of the public API**
-- 📝 **Public interfaces defined in `kephasnet.go`**
+- 📝 **Public interfaces defined in `knet.go`**
 - 🏭 **Factory pattern for clean API surface**
 
 ## 🎮 Use Cases
 
 This library is ideal for:
 
-| Use Case | Why KephasNet? |
+| Use Case | Why knet? |
 |----------|---------------|
 | **🎮 Game Servers** | Command pattern perfect for different message types (movement, combat, chat, inventory) |
 | **📊 Real-time Dashboards** | Low-latency binary protocol for high-frequency updates |
@@ -575,7 +575,7 @@ This library is ideal for:
 // Maintain a client registry using callbacks
 var (
     clientsMu sync.RWMutex
-    clients   = make(map[string]kephasnet.Client)
+    clients   = make(map[string]knet.Client)
 )
 
 // Track clients via OnConnect and OnDisconnect
@@ -583,12 +583,12 @@ config := ws.NewConfig(
     ":8080",
     ws.DefaultRateLimitConfig(),
     ws.AllOrigins(),
-    func(client kephasnet.Client) {
+    func(client knet.Client) {
         clientsMu.Lock()
         clients[client.ID()] = client
         clientsMu.Unlock()
     },
-    func(client kephasnet.Client) {
+    func(client knet.Client) {
         clientsMu.Lock()
         delete(clients, client.ID())
         clientsMu.Unlock()
@@ -615,7 +615,7 @@ server.BroadcastCommand(ctx, 0x0200, []byte("Server announcement"))
 ### Handler with Timeout
 
 ```go
-server.RegisterHandler(ctx, 0x0500, func(client kephasnet.Client, payload []byte) {
+server.RegisterHandler(ctx, 0x0500, func(client knet.Client, payload []byte) {
     // Create context with timeout for this handler
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
@@ -639,7 +639,7 @@ server.RegisterHandler(ctx, 0x0500, func(client kephasnet.Client, payload []byte
 
 ```go
 type ClientInfo struct {
-    Client      kephasnet.Client
+    Client      knet.Client
     Username    string
     ConnectedAt time.Time
     LastSeen    time.Time
@@ -654,7 +654,7 @@ config := ws.NewConfig(
     ":8080",
     ws.DefaultRateLimitConfig(),
     ws.AllOrigins(),
-    func(client kephasnet.Client) {
+    func(client knet.Client) {
         info := &ClientInfo{
             Client:      client,
             ConnectedAt: time.Now(),
@@ -667,7 +667,7 @@ config := ws.NewConfig(
         
         log.Printf("Client %s connected", client.ID())
     },
-    func(client kephasnet.Client) {
+    func(client knet.Client) {
         clientsMu.Lock()
         info, exists := clientsInfo[client.ID()]
         delete(clientsInfo, client.ID())
@@ -704,14 +704,14 @@ func main() {
         ws.DefaultRateLimitConfig(),
         ws.AllOrigins(),
         nil,
-        func(client kephasnet.Client) {
+        func(client knet.Client) {
             log.Printf("Client %s disconnected during shutdown", client.ID())
         },
     )
     server := ws.New(config)
     
     // Register handlers...
-    server.RegisterHandler(ctx, 0x01, func(client kephasnet.Client, payload []byte) {
+    server.RegisterHandler(ctx, 0x01, func(client knet.Client, payload []byte) {
         // Handle message
         log.Printf("Received from %s: %s", client.ID(), string(payload))
     })
@@ -824,7 +824,7 @@ You can use this example as a **starting point** for building your own real-time
 
 ## 🌐 JavaScript Client Usage
 
-The `kephas-client.js` library provides a browser-based client for connecting to KephasNet servers. It supports both the asynchronous command pattern and synchronous JSON-RPC calls.
+The `kephas-client.js` library provides a browser-based client for connecting to knet servers. It supports both the asynchronous command pattern and synchronous JSON-RPC calls.
 
 ### Communication Patterns
 
@@ -911,7 +911,7 @@ const client = new KephasClient({
 <!DOCTYPE html>
 <html>
 <head>
-    <title>KephasNet Client</title>
+    <title>knet Client</title>
     <script src="kephas-client.js"></script>
 </head>
 <body>
@@ -1038,7 +1038,7 @@ Contributions are welcome! Here's how you can help:
 
 ### Reporting Issues
 
-Found a bug? Have a feature request? Please [open an issue](https://github.com/luciancaetano/kephasnet/issues) with:
+Found a bug? Have a feature request? Please [open an issue](https://github.com/luciancaetano/knet/issues) with:
 - Clear description of the problem/feature
 - Steps to reproduce (for bugs)
 - Expected vs actual behavior
@@ -1058,10 +1058,10 @@ Built with these excellent libraries:
 
 ## 📚 Additional Resources
 
-- [📖 Go Package Documentation](https://pkg.go.dev/github.com/luciancaetano/kephasnet)
-- [🐛 Issue Tracker](https://github.com/luciancaetano/kephasnet/issues)
-- [💬 Discussions](https://github.com/luciancaetano/kephasnet/discussions)
-- [📋 Changelog](https://github.com/luciancaetano/kephasnet/releases)
+- [📖 Go Package Documentation](https://pkg.go.dev/github.com/luciancaetano/knet)
+- [🐛 Issue Tracker](https://github.com/luciancaetano/knet/issues)
+- [💬 Discussions](https://github.com/luciancaetano/knet/discussions)
+- [📋 Changelog](https://github.com/luciancaetano/knet/releases)
 
 ## ⭐ Support
 

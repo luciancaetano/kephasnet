@@ -1,4 +1,4 @@
-// Package kephasnet provides a high-performance WebSocket library for game servers and real-time applications.
+// Package knet provides a high-performance WebSocket library for game servers and real-time applications.
 //
 // This library implements a command pattern protocol with efficient binary encoding and optional
 // JSON-RPC 2.0 support. It's designed for building scalable game servers, real-time communication
@@ -15,7 +15,7 @@
 // # Quick Start
 //
 //	import (
-//	    "github.com/luciancaetano/kephasnet/ws"
+//	    "github.com/luciancaetano/knet/ws"
 //	)
 //
 //	// Create server with rate limiting
@@ -23,7 +23,7 @@
 //	server := ws.New(":8080", rateLimitConfig, ws.AllOrigins())
 //
 //	// Register command handlers (command pattern)
-//	server.RegisterHandler(ctx, 0x01, func(client kephasnet.Client, payload []byte) {
+//	server.RegisterHandler(ctx, 0x01, func(client knet.Client, payload []byte) {
 //	    // Process the message and optionally send a response
 //	    response := []byte("pong")
 //	    client.Send(ctx, 0x01, response)
@@ -95,4 +95,4 @@
 //   - DO NOT modify decoded payload (it references the original buffer)
 //   - Handlers execute in goroutines (no execution order guarantee)
 //   - Configure CheckOriginFn in production (never use ws.AllOrigins() in production)
-package kephasnet
+package knet

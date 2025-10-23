@@ -10,8 +10,8 @@ import (
 	"github.com/gorilla/websocket"
 	"golang.org/x/time/rate"
 
-	"github.com/luciancaetano/kephasnet"
-	"github.com/luciancaetano/kephasnet/internal/protocol"
+	"github.com/luciancaetano/knet"
+	"github.com/luciancaetano/knet/internal/protocol"
 )
 
 // Client implements the WSClient interface
@@ -73,13 +73,13 @@ func (c *Client) Send(ctx context.Context, command uint32, payload []byte) error
 	// Encode the message using protocol first (before acquiring lock)
 	data, err := protocol.Encode(command, payload)
 	if err != nil {
-		return fmt.Errorf("%s: %w", kephasnet.ErrFailedToEncode, err)
+		return fmt.Errorf("%s: %w", knet.ErrFailedToEncode, err)
 	}
 
 	c.mu.RLock()
 	if c.closed {
 		c.mu.RUnlock()
-		return fmt.Errorf(kephasnet.ErrConnectionClosed)
+		return fmt.Errorf(knet.ErrConnectionClosed)
 	}
 
 	// Keep the lock while sending to prevent race with Close()
@@ -92,7 +92,7 @@ func (c *Client) Send(ctx context.Context, command uint32, payload []byte) error
 		return ctx.Err()
 	case <-c.ctx.Done():
 		c.mu.RUnlock()
-		return fmt.Errorf(kephasnet.ErrContextCancelled)
+		return fmt.Errorf(knet.ErrContextCancelled)
 	}
 }
 

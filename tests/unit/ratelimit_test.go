@@ -5,7 +5,7 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/luciancaetano/kephasnet/internal/websocket"
+	"github.com/luciancaetano/knet/internal/websocket"
 )
 
 // TestDefaultRateLimitConfig tests the default rate limit configuration

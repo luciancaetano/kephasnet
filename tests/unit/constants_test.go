@@ -3,7 +3,7 @@ package unit_test
 import (
 	"testing"
 
-	"github.com/luciancaetano/kephasnet"
+	"github.com/luciancaetano/knet"
 )
 
 // TestConstants verifies that all constants are defined with expected values
@@ -12,17 +12,17 @@ func TestConstants(t *testing.T) {
 
 	t.Run("command IDs", func(t *testing.T) {
 		// Verify reserved command IDs are distinct
-		if kephasnet.CmdJSONRPC == kephasnet.CmdJSONRPCError {
+		if knet.CmdJSONRPC == knet.CmdJSONRPCError {
 			t.Error("CmdJSONRPC and CmdJSONRPCError should be different")
 		}
 
 		// Verify they're using reserved high values
-		if kephasnet.CmdJSONRPC != 0xFFFFFFFF {
-			t.Errorf("CmdJSONRPC = %v, want 0xFFFFFFFF", kephasnet.CmdJSONRPC)
+		if knet.CmdJSONRPC != 0xFFFFFFFF {
+			t.Errorf("CmdJSONRPC = %v, want 0xFFFFFFFF", knet.CmdJSONRPC)
 		}
 
-		if kephasnet.CmdJSONRPCError != 0xFFFFFFFE {
-			t.Errorf("CmdJSONRPCError = %v, want 0xFFFFFFFE", kephasnet.CmdJSONRPCError)
+		if knet.CmdJSONRPCError != 0xFFFFFFFE {
+			t.Errorf("CmdJSONRPCError = %v, want 0xFFFFFFFE", knet.CmdJSONRPCError)
 		}
 	})
 
@@ -32,17 +32,17 @@ func TestConstants(t *testing.T) {
 			name  string
 			value string
 		}{
-			{"ErrInvalidMessageFormat", kephasnet.ErrInvalidMessageFormat},
-			{"ErrUnknownCommand", kephasnet.ErrUnknownCommand},
-			{"ErrParseError", kephasnet.ErrParseError},
-			{"ErrInvalidRequest", kephasnet.ErrInvalidRequest},
-			{"ErrMethodNotFound", kephasnet.ErrMethodNotFound},
-			{"ErrInternalError", kephasnet.ErrInternalError},
-			{"ErrClientNotFound", kephasnet.ErrClientNotFound},
-			{"ErrConnectionClosed", kephasnet.ErrConnectionClosed},
-			{"ErrContextCancelled", kephasnet.ErrContextCancelled},
-			{"ErrFailedToEncode", kephasnet.ErrFailedToEncode},
-			{"ErrServerAlreadyRunning", kephasnet.ErrServerAlreadyRunning},
+			{"ErrInvalidMessageFormat", knet.ErrInvalidMessageFormat},
+			{"ErrUnknownCommand", knet.ErrUnknownCommand},
+			{"ErrParseError", knet.ErrParseError},
+			{"ErrInvalidRequest", knet.ErrInvalidRequest},
+			{"ErrMethodNotFound", knet.ErrMethodNotFound},
+			{"ErrInternalError", knet.ErrInternalError},
+			{"ErrClientNotFound", knet.ErrClientNotFound},
+			{"ErrConnectionClosed", knet.ErrConnectionClosed},
+			{"ErrContextCancelled", knet.ErrContextCancelled},
+			{"ErrFailedToEncode", knet.ErrFailedToEncode},
+			{"ErrServerAlreadyRunning", knet.ErrServerAlreadyRunning},
 		}
 
 		for _, em := range errorMessages {
@@ -57,11 +57,11 @@ func TestConstants(t *testing.T) {
 	t.Run("JSON-RPC error codes", func(t *testing.T) {
 		// Verify JSON-RPC error codes follow specification
 		errorCodes := map[string]int{
-			"JSONRPCParseError":     kephasnet.JSONRPCParseError,
-			"JSONRPCInvalidRequest": kephasnet.JSONRPCInvalidRequest,
-			"JSONRPCMethodNotFound": kephasnet.JSONRPCMethodNotFound,
-			"JSONRPCInvalidParams":  kephasnet.JSONRPCInvalidParams,
-			"JSONRPCInternalError":  kephasnet.JSONRPCInternalError,
+			"JSONRPCParseError":     knet.JSONRPCParseError,
+			"JSONRPCInvalidRequest": knet.JSONRPCInvalidRequest,
+			"JSONRPCMethodNotFound": knet.JSONRPCMethodNotFound,
+			"JSONRPCInvalidParams":  knet.JSONRPCInvalidParams,
+			"JSONRPCInternalError":  knet.JSONRPCInternalError,
 		}
 
 		expectedCodes := map[string]int{
@@ -80,8 +80,8 @@ func TestConstants(t *testing.T) {
 	})
 
 	t.Run("JSON-RPC version", func(t *testing.T) {
-		if kephasnet.JSONRPCVersion != "2.0" {
-			t.Errorf("JSONRPCVersion = %v, want 2.0", kephasnet.JSONRPCVersion)
+		if knet.JSONRPCVersion != "2.0" {
+			t.Errorf("JSONRPCVersion = %v, want 2.0", knet.JSONRPCVersion)
 		}
 	})
 }

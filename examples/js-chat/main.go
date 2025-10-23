@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luciancaetano/kephasnet"
-	"github.com/luciancaetano/kephasnet/ws"
+	"github.com/luciancaetano/knet"
+	"github.com/luciancaetano/knet/ws"
 )
 
 const (
@@ -37,7 +37,7 @@ type UserInfo struct {
 }
 
 type ChatServer struct {
-	server     kephasnet.WebsocketServer
+	server     knet.WebsocketServer
 	clients    map[string]*UserInfo
 	clientsMux sync.RWMutex
 	ctx        context.Context
@@ -51,7 +51,7 @@ func NewChatServer(addr string) *ChatServer {
 
 	// Create WebSocket server with rate limiting and connection callback
 	rateLimitConfig := ws.DefaultRateLimitConfig()
-	cs.server = ws.New(ws.NewConfig(addr, rateLimitConfig, ws.AllOrigins(), func(client kephasnet.Client) {
+	cs.server = ws.New(ws.NewConfig(addr, rateLimitConfig, ws.AllOrigins(), func(client knet.Client) {
 		log.Printf("New client connected: ID=%s, RemoteAddr=%s", client.ID(), client.RemoteAddr())
 
 		cs.clientsMux.Lock()
@@ -61,7 +61,7 @@ func NewChatServer(addr string) *ChatServer {
 			JoinedAt: time.Now(),
 		}
 		cs.clientsMux.Unlock()
-	}, func(client kephasnet.Client, voluntary bool) {
+	}, func(client knet.Client, voluntary bool) {
 		log.Printf("Client disconnected: ID=%s, RemoteAddr=%s, Voluntary=%v", client.ID(), client.RemoteAddr(), voluntary)
 
 		cs.clientsMux.Lock()
@@ -98,7 +98,7 @@ func (cs *ChatServer) Start(ctx context.Context) error {
 	return cs.server.Start(ctx)
 }
 
-func (cs *ChatServer) handleChatMessage(client kephasnet.Client, payload []byte) {
+func (cs *ChatServer) handleChatMessage(client knet.Client, payload []byte) {
 	var msg ChatMessage
 	if err := json.Unmarshal(payload, &msg); err != nil {
 		log.Printf("Invalid message format: %v", err)
@@ -121,7 +121,7 @@ func (cs *ChatServer) handleChatMessage(client kephasnet.Client, payload []byte)
 	}
 }
 
-func (cs *ChatServer) handleGetUsers(client kephasnet.Client, payload []byte) {
+func (cs *ChatServer) handleGetUsers(client knet.Client, payload []byte) {
 	cs.clientsMux.RLock()
 	defer cs.clientsMux.RUnlock()
 
@@ -142,7 +142,7 @@ func (cs *ChatServer) handleGetUsers(client kephasnet.Client, payload []byte) {
 	}
 }
 
-func (cs *ChatServer) handleUserInfo(client kephasnet.Client, payload []byte) {
+func (cs *ChatServer) handleUserInfo(client knet.Client, payload []byte) {
 	var userInfo struct {
 		Username string `json:"username"`
 	}

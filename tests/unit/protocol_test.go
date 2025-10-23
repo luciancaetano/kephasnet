@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/luciancaetano/kephasnet/internal/protocol"
+	"github.com/luciancaetano/knet/internal/protocol"
 )
 
 // TestEncodeDecode tests basic encode/decode functionality

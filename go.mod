@@ -1,4 +1,4 @@
-module github.com/luciancaetano/kephasnet
+module github.com/luciancaetano/knet
 
 go 1.25.1
 

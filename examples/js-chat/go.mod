@@ -2,9 +2,9 @@ module client-server-test
 
 go 1.25.1
 
-replace github.com/luciancaetano/kephasnet => ../..
+replace github.com/luciancaetano/knet => ../..
 
-require github.com/luciancaetano/kephasnet v0.0.0-00010101000000-000000000000
+require github.com/luciancaetano/knet v0.0.0-00010101000000-000000000000
 
 require (
 	github.com/google/uuid v1.6.0 // indirect

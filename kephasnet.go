@@ -1,4 +1,4 @@
-package kephasnet
+package knet
 
 import "context"
 
@@ -9,7 +9,7 @@ import "context"
 //
 // Example usage:
 //
-//	import "github.com/luciancaetano/kephasnet/ws"
+//	import "github.com/luciancaetano/knet/ws"
 //
 //	config := ws.NewConfig(
 //	    ":8080",

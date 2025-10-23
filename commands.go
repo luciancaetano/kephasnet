@@ -1,4 +1,4 @@
-package kephasnet
+package knet
 
 // Reserved command IDs for internal use.
 const (

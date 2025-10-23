@@ -3,8 +3,8 @@ package ws
 import (
 	"net/http"
 
-	"github.com/luciancaetano/kephasnet"
-	"github.com/luciancaetano/kephasnet/internal/websocket"
+	"github.com/luciancaetano/knet"
+	"github.com/luciancaetano/knet/internal/websocket"
 )
 
 type RateLimitConfig = websocket.RateLimitConfig
@@ -26,10 +26,10 @@ type ServerConfig = *websocket.ServerConfig
 //
 // Example:
 //
-//	server := ws.New(":8080", ws.DefaultRateLimitConfig(), ws.AllOrigins(), func(client kephasnet.Client) {
+//	server := ws.New(":8080", ws.DefaultRateLimitConfig(), ws.AllOrigins(), func(client knet.Client) {
 //	    log.Printf("Client connected: %s", client.ID())
 //	})
-func New(cfg ServerConfig) kephasnet.WebsocketServer {
+func New(cfg ServerConfig) knet.WebsocketServer {
 	return websocket.New(cfg)
 }
 
