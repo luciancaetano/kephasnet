@@ -23,8 +23,10 @@
 //	server := ws.New(":8080", rateLimitConfig, ws.AllOrigins())
 //
 //	// Register command handlers (command pattern)
-//	server.RegisterHandler(ctx, 0x01, func(payload []byte) ([]byte, error) {
-//	    return []byte("ok"), nil
+//	server.RegisterHandler(ctx, 0x01, func(client kephasnet.Client, payload []byte) {
+//	    // Process the message and optionally send a response
+//	    response := []byte("pong")
+//	    client.Send(ctx, 0x01, response)
 //	})
 //
 //	// Optional: Register JSON-RPC handlers

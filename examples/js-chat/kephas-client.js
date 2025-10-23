@@ -5,6 +5,14 @@
  * - 4 bytes: CommandID (uint32, big-endian)
  * - N bytes: Payload (binary)
  *
+ * Communication Pattern:
+ * - Command Handlers: Asynchronous (fire-and-forget). Messages are sent without
+ *   expecting a direct response. The client registers handlers using on() to 
+ *   receive messages from the server.
+ * 
+ * - JSON-RPC: Synchronous request-response pattern. The sendJSONRPC() method
+ *   returns a Promise that resolves when the server sends a response.
+ *
  * This is a direct plain-JS conversion of the TypeScript implementation.
  */
 
@@ -333,16 +341,32 @@ window.KephasReservedCommands = ReservedCommands;
 window.KephasConnectionState = ConnectionState;
 
 /* Example usage (browser):
+
+// Create client instance
 const client = new KephasClient({
-  url: 'ws://localhost:8080',
+  url: 'ws://localhost:8080/ws',
   debug: true,
 });
 
-client.on(0x0100, async (payload) => {
+// Register handler for incoming messages (async pattern)
+// The handler receives messages but doesn't return a response
+client.on(0x0001, async (payload) => {
   const decoder = new TextDecoder();
-  console.log('Received:', decoder.decode(payload));
+  const message = decoder.decode(payload);
+  console.log('Received:', message);
+  
+  // Optionally send another message (not a response)
+  await client.sendString(0x0001, 'Thanks for the message!');
 });
 
+// Connect to server
 await client.connect();
-await client.sendString(0x0100, 'Hello, server!');
+
+// Send message (fire-and-forget, no response expected)
+await client.sendString(0x0001, 'Hello, server!');
+
+// For request-response pattern, use JSON-RPC
+const response = await client.sendJSONRPC('getUserInfo', { userId: 123 });
+console.log('User info:', response.result);
+
 */

@@ -54,10 +54,10 @@ func startTestServer(t *testing.T, ctx context.Context) kephasnet.WebsocketServe
 	})
 
 	// Register chat message handler
-	err := server.RegisterHandler(ctx, ChatMessageCommand, func(payload []byte) ([]byte, error) {
+	err := server.RegisterHandler(ctx, ChatMessageCommand, func(client kephasnet.Client, payload []byte) {
 		var msg ChatMessage
 		if err := json.Unmarshal(payload, &msg); err != nil {
-			return nil, err
+			return
 		}
 
 		msg.Timestamp = time.Now()
@@ -65,14 +65,12 @@ func startTestServer(t *testing.T, ctx context.Context) kephasnet.WebsocketServe
 		// Broadcast to all clients
 		broadcastPayload, _ := json.Marshal(msg)
 		clientsMu.RLock()
-		for _, client := range clients {
-			if client.IsAlive() {
-				_ = client.Send(context.Background(), ChatMessageCommand, broadcastPayload)
+		for _, c := range clients {
+			if c.IsAlive() {
+				_ = c.Send(context.Background(), ChatMessageCommand, broadcastPayload)
 			}
 		}
 		clientsMu.RUnlock()
-
-		return nil, nil
 	})
 
 	if err != nil {

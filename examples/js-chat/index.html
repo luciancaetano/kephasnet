@@ -402,6 +402,8 @@
                 });
 
                 // Register message handler using .on() method
+                // Handlers are executed asynchronously (fire-and-forget pattern)
+                // The server broadcasts messages but doesn't expect a response
                 client.on(ChatMessageCommand, (payload) => {
                     try {
                         const decoder = new TextDecoder();
@@ -445,7 +447,9 @@
                     message: message
                 };
 
-                // Use sendJSON method from the client
+                // Send message asynchronously (fire-and-forget)
+                // The server will broadcast it to all clients, including us
+                // We don't wait for or expect a direct response
                 await client.sendJSON(ChatMessageCommand, payload);
                 
                 messageInput.value = '';

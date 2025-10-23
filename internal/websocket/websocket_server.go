@@ -67,7 +67,7 @@ type Server struct {
 	addr     string
 	server   *http.Server
 	clients  sync.Map // map[string]*Client
-	handlers sync.Map // map[uint32]func(payload []byte) ([]byte, error)
+	handlers sync.Map // map[uint32]func(client kephasnet.Client, payload []byte)
 
 	// JSON-RPC handlers (converted to protocol messages internally)
 	jsonRPCHandlers sync.Map // map[string]func(params map[string]interface{}) (interface{}, error)
@@ -186,8 +186,8 @@ func (s *Server) Stop(ctx context.Context) error {
 }
 
 // RegisterHandler registers a handler for a specific command ID
-// The handler receives the binary payload and returns a binary response
-func (s *Server) RegisterHandler(ctx context.Context, commandID uint32, handler func(payload []byte) ([]byte, error)) error {
+// The handler is executed asynchronously and receives the client and payload
+func (s *Server) RegisterHandler(ctx context.Context, commandID uint32, handler func(client kephasnet.Client, payload []byte)) error {
 	s.handlers.Store(commandID, handler)
 	return nil
 }
@@ -288,28 +288,12 @@ func (s *Server) handleProtocolMessage(client *Client, commandID uint32, payload
 
 	// Handle normal protocol command
 	if handler, ok := s.handlers.Load(commandID); ok {
-		if handlerFunc, ok := handler.(func(payload []byte) ([]byte, error)); ok {
-			// Execute handler in goroutine to avoid blocking read loop
-			go func(cmd uint32, data []byte) {
-				responsePayload, err := handlerFunc(data)
-				if err != nil {
-					// Send error response with same command ID
-					client.Send(context.Background(), cmd, []byte(err.Error()))
-					return
-				}
-
-				// Send response back to client with same command ID
-				if responsePayload != nil {
-					client.Send(context.Background(), cmd, responsePayload)
-				}
-			}(commandID, payload)
+		if handlerFunc, ok := handler.(func(kephasnet.Client, []byte)); ok {
+			// Execute handler in goroutine (async, client decides if/when to respond)
+			go handlerFunc(client, payload)
 		}
-	} else {
-		// Unknown command ID
-		go func() {
-			client.Send(context.Background(), commandID, []byte(kephasnet.ErrUnknownCommand))
-		}()
 	}
+	// Note: Unknown commands are silently ignored (fire-and-forget pattern)
 }
 
 // JSONRPCRequest represents a JSON-RPC 2.0 request

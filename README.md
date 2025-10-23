@@ -77,10 +77,16 @@ func main() {
         client.Send(ctx, 0x0001, welcomeMsg)
     })
 
-    // Register a command handler (0x0100 = player login)
-    err := server.RegisterHandler(ctx, 0x0100, func(payload []byte) ([]byte, error) {
+    // Register an async command handler (0x0100 = player login)
+    // Handlers receive the client and payload, no return value (fire-and-forget)
+    err := server.RegisterHandler(ctx, 0x0100, func(client kephasnet.Client, payload []byte) {
         log.Printf("📨 Received login request: %s", string(payload))
-        return []byte("Login successful"), nil
+        
+        // Process the login
+        response := []byte("Login successful")
+        
+        // Send response back to the client (optional)
+        client.Send(ctx, 0x0100, response)
     })
     if err != nil {
         log.Fatal(err)
@@ -138,7 +144,8 @@ In addition to the binary command protocol, the library provides optional JSON-R
 ## 🏗️ Architecture Features
 
 - ⚡ **Ultra-efficient binary protocol** (4-byte overhead per message)
-- 🔄 **Asynchronous handlers** (run in goroutines; don't block the read loop)
+- 🔄 **Asynchronous command handlers** (fire-and-forget pattern, run in goroutines)
+- 🔁 **Synchronous JSON-RPC handlers** (request-response pattern)
 - 📋 **Zero-copy decode** (payload is a slice of the read buffer — DO NOT modify)
 - 🛡️ **Per-client rate limiting** (token bucket algorithm)
 - ⏱️ **Timeouts**: Read 60s (renewed on each message), Write 10s, Ping every 54s
@@ -255,53 +262,60 @@ server := ws.New(":8080", ws.DefaultRateLimitConfig(), ws.AllOrigins(),
 
 ## 🎯 Message Handlers
 
-### Binary Command Handlers
+KephasNet supports two communication patterns:
 
-Register handlers using the command pattern - each command ID maps to a specific handler function:
+### 1. Command Pattern (Asynchronous - Fire-and-Forget)
+
+Handlers are executed asynchronously. They receive the client and payload but don't return a response. The handler can optionally send messages back to the client or broadcast to all clients.
+
+**Use this for:**
+- 🎮 Game events (player movement, actions)
+- 💬 Chat messages
+- 📢 Notifications
+- 🔄 State updates that don't require acknowledgment
 
 ```go
 // Example: Player movement command (ID 0x0100)
-server.RegisterHandler(ctx, 0x0100, func(payload []byte) ([]byte, error) {
+server.RegisterHandler(ctx, 0x0100, func(client kephasnet.Client, payload []byte) {
     if len(payload) == 0 {
-        return nil, fmt.Errorf("empty payload")
+        log.Println("Empty payload received")
+        return
     }
     
     // Process movement data
     position := processMovement(payload)
     
-    // Return response (will be sent back with same command ID)
-    return position, nil
+    // Optionally send response back to this client
+    client.Send(ctx, 0x0100, position)
+    
+    // Or broadcast to all clients
+    server.BroadcastCommand(ctx, 0x0101, position)
 })
 
 // Example: Chat message command (ID 0x0200)
-server.RegisterHandler(ctx, 0x0200, func(payload []byte) ([]byte, error) {
+server.RegisterHandler(ctx, 0x0200, func(client kephasnet.Client, payload []byte) {
     chatMsg := processChatMessage(payload)
     
-    // Broadcast to all clients
+    // Broadcast to all clients (including sender)
     server.BroadcastCommand(ctx, 0x0200, chatMsg)
-    
-    // Return nil if you don't want to send a response to this specific client
-    return nil, nil
 })
 
-// Example: Player stats request (ID 0x0300)
-server.RegisterHandler(ctx, 0x0300, func(payload []byte) ([]byte, error) {
-    playerID := string(payload)
-    stats := getPlayerStats(playerID)
-    
-    // Marshal stats to JSON
-    statsJSON, err := json.Marshal(stats)
-    if err != nil {
-        return nil, err
-    }
-    
-    return statsJSON, nil
+// Example: Notification handler (ID 0x0300) - no response needed
+server.RegisterHandler(ctx, 0x0300, func(client kephasnet.Client, payload []byte) {
+    log.Printf("Notification received from %s: %s", client.ID(), string(payload))
+    // Just log it, no response needed
 })
 ```
 
-### JSON-RPC Handlers (Optional)
+### 2. JSON-RPC Pattern (Synchronous - Request-Response)
 
-For standard RPC-style communication, register JSON-RPC 2.0 handlers:
+For standard RPC-style communication where you need a response, use JSON-RPC handlers. These follow the request-response pattern.
+
+**Use this for:**
+- 🔍 Data queries (get player stats, inventory)
+- ⚙️ Configuration requests
+- 🔐 Authentication
+- 📊 Any operation that requires a response
 
 ```go
 // Register a JSON-RPC method for getting player stats
@@ -336,10 +350,13 @@ server.RegisterJSONRPCHandler(ctx, "game.createRoom", func(params map[string]int
 ```
 
 **Important Notes:**
-- ⚠️ Handlers run in separate goroutines — no ordering guarantees
+- ⚠️ **Command handlers** run in separate goroutines and don't block the read loop
+- ⚠️ **Command handlers** are fire-and-forget (async) - use `client.Send()` to respond
+- ⚠️ **JSON-RPC handlers** are synchronous and return responses automatically
 - ⚠️ DO NOT modify the payload slice (zero-copy)
-- ✅ Return `nil` response if you don't want to send a reply
-- ✅ Return an error to send an error response to the client
+- ✅ Unknown command IDs are silently ignored (fire-and-forget pattern)
+- ✅ Use command handlers for game events, chat, notifications
+- ✅ Use JSON-RPC handlers for queries and operations that need responses
 
 ## 🛡️ Security & Limits
 
@@ -524,7 +541,7 @@ server.BroadcastCommand(ctx, 0x0200, []byte("Server announcement"))
 ### Handler with Timeout
 
 ```go
-server.RegisterHandler(ctx, 0x0500, func(payload []byte) ([]byte, error) {
+server.RegisterHandler(ctx, 0x0500, func(client kephasnet.Client, payload []byte) {
     // Create context with timeout for this handler
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
@@ -533,12 +550,14 @@ server.RegisterHandler(ctx, 0x0500, func(payload []byte) ([]byte, error) {
     result, err := processWithTimeout(ctx, payload)
     if err != nil {
         if ctx.Err() == context.DeadlineExceeded {
-            return nil, fmt.Errorf("operation timed out")
+            errorMsg := []byte("operation timed out")
+            client.Send(ctx, 0x0500, errorMsg)
         }
-        return nil, err
+        return
     }
     
-    return result, nil
+    // Send result back to client
+    client.Send(ctx, 0x0500, result)
 })
 ```
 
@@ -601,7 +620,10 @@ func main() {
     server := ws.New(":8080", ws.DefaultRateLimitConfig(), ws.AllOrigins(), nil)
     
     // Register handlers...
-    server.RegisterHandler(ctx, 0x01, myHandler)
+    server.RegisterHandler(ctx, 0x01, func(client kephasnet.Client, payload []byte) {
+        // Handle message
+        log.Printf("Received from %s: %s", client.ID(), string(payload))
+    })
     
     // Start server in goroutine
     go func() {
@@ -693,7 +715,7 @@ The chat example demonstrates:
 | **Users List** | `0x0006` | Response with online users array |
 
 **Server Implementation Highlights:**
-- Command-based message routing
+- Asynchronous command-based message routing (fire-and-forget)
 - Client tracking with connection callbacks
 - Broadcasting to all connected clients
 - Graceful disconnect handling
@@ -701,11 +723,141 @@ The chat example demonstrates:
 
 **Client Implementation Highlights:**
 - Binary protocol encoding/decoding
+- Asynchronous message handlers (fire-and-forget pattern)
+- Synchronous JSON-RPC support for request-response
 - Automatic reconnection logic
 - Event-driven message handling
 - Clean separation of concerns
 
 You can use this example as a **starting point** for building your own real-time applications! 🚀
+
+## 🌐 JavaScript Client Usage
+
+The `kephas-client.js` library provides a browser-based client for connecting to KephasNet servers. It supports both the asynchronous command pattern and synchronous JSON-RPC calls.
+
+### Communication Patterns
+
+#### 1. Asynchronous Commands (Fire-and-Forget)
+
+Use for game events, chat messages, notifications, and any communication that doesn't require a response:
+
+```javascript
+// Create client instance
+const client = new KephasClient({
+  url: 'ws://localhost:8080/ws',
+  autoReconnect: true,
+  debug: true
+});
+
+// Register handler for incoming messages (async pattern)
+client.on(0x0001, async (payload) => {
+  const decoder = new TextDecoder();
+  const message = decoder.decode(payload);
+  console.log('Received:', message);
+  
+  // Optionally send another message (not a response)
+  await client.sendString(0x0001, 'Thanks!');
+});
+
+// Connect to server
+await client.connect();
+
+// Send message (no response expected)
+await client.sendString(0x0001, 'Hello, server!');
+await client.sendJSON(0x0001, { type: 'chat', message: 'Hi!' });
+```
+
+#### 2. JSON-RPC (Request-Response)
+
+Use for queries, operations that need confirmation, or when you need a response:
+
+```javascript
+// Call a JSON-RPC method and wait for response
+const response = await client.sendJSONRPC('player.getStats', { 
+  playerId: 123 
+});
+console.log('Player stats:', response.result);
+
+// Another example
+const result = await client.sendJSONRPC('math.add', { 
+  a: 5, 
+  b: 3 
+});
+console.log('Sum:', result.result); // 8
+```
+
+### Client Configuration Options
+
+```javascript
+const client = new KephasClient({
+  url: 'ws://localhost:8080/ws',    // WebSocket URL
+  autoReconnect: true,               // Auto-reconnect on disconnect
+  reconnectDelay: 3000,              // Initial reconnect delay (ms)
+  maxReconnectAttempts: Infinity,    // Max reconnection attempts
+  connectionTimeout: 10000,          // Connection timeout (ms)
+  debug: false                       // Enable debug logging
+});
+```
+
+### API Reference
+
+| Method | Description |
+|--------|-------------|
+| `connect()` | Connect to the server (returns Promise) |
+| `disconnect()` | Disconnect from the server |
+| `on(commandId, handler)` | Register async handler for command |
+| `off(commandId)` | Unregister handler |
+| `send(commandId, payload)` | Send binary data (fire-and-forget) |
+| `sendString(commandId, text)` | Send text data (fire-and-forget) |
+| `sendJSON(commandId, data)` | Send JSON data (fire-and-forget) |
+| `sendJSONRPC(method, params, id)` | Send JSON-RPC request (returns Promise) |
+| `isConnected()` | Check connection status |
+| `getState()` | Get connection state |
+
+### Complete Example
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KephasNet Client</title>
+    <script src="kephas-client.js"></script>
+</head>
+<body>
+    <script>
+        const client = new KephasClient({
+            url: 'ws://localhost:8080/ws',
+            debug: true
+        });
+
+        // Handle chat messages (async)
+        client.on(0x0001, async (payload) => {
+            const decoder = new TextDecoder();
+            const data = JSON.parse(decoder.decode(payload));
+            console.log(`${data.username}: ${data.message}`);
+        });
+
+        // Connect and send message
+        (async () => {
+            await client.connect();
+            console.log('Connected!');
+            
+            // Send chat message (fire-and-forget)
+            await client.sendJSON(0x0001, {
+                username: 'John',
+                message: 'Hello, everyone!'
+            });
+            
+            // Or use JSON-RPC for request-response
+            const stats = await client.sendJSONRPC('player.getStats', {
+                playerId: 123
+            });
+            console.log('Stats:', stats.result);
+        })();
+    </script>
+</body>
+</html>
+```
 
 ## 🧪 Testing
 

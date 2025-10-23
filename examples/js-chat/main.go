@@ -78,10 +78,11 @@ func (cs *ChatServer) Start(ctx context.Context) error {
 	return cs.server.Start(ctx)
 }
 
-func (cs *ChatServer) handleChatMessage(payload []byte) ([]byte, error) {
+func (cs *ChatServer) handleChatMessage(client kephasnet.Client, payload []byte) {
 	var msg ChatMessage
 	if err := json.Unmarshal(payload, &msg); err != nil {
-		return nil, fmt.Errorf("invalid message format: %w", err)
+		log.Printf("Invalid message format: %v", err)
+		return
 	}
 
 	msg.Timestamp = time.Now()
@@ -90,19 +91,17 @@ func (cs *ChatServer) handleChatMessage(payload []byte) ([]byte, error) {
 	// Prepare the response
 	responseData, err := json.Marshal(msg)
 	if err != nil {
-		return nil, err
+		log.Printf("Failed to marshal message: %v", err)
+		return
 	}
 
 	// Broadcast to all clients
 	if err := cs.server.BroadcastCommand(cs.ctx, ChatMessageCommand, responseData); err != nil {
 		log.Printf("Failed to broadcast message: %v", err)
 	}
-
-	// Return nil as we already broadcasted
-	return nil, nil
 }
 
-func (cs *ChatServer) handleGetUsers(payload []byte) ([]byte, error) {
+func (cs *ChatServer) handleGetUsers(client kephasnet.Client, payload []byte) {
 	cs.clientsMux.RLock()
 	defer cs.clientsMux.RUnlock()
 
@@ -113,10 +112,14 @@ func (cs *ChatServer) handleGetUsers(payload []byte) ([]byte, error) {
 
 	data, err := json.Marshal(users)
 	if err != nil {
-		return nil, err
+		log.Printf("Failed to marshal users list: %v", err)
+		return
 	}
 
-	return data, nil
+	// Send users list back to the requesting client
+	if err := client.Send(cs.ctx, UsersListCommand, data); err != nil {
+		log.Printf("Failed to send users list: %v", err)
+	}
 }
 
 func (cs *ChatServer) AddUser(clientID, username string) {

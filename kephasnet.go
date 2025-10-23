@@ -15,8 +15,9 @@ import "context"
 //	server := ws.New(":8080", rateLimitConfig, ws.AllOrigins())
 //
 //	// Register a handler for command 0x01
-//	server.RegisterHandler(ctx, 0x01, func(payload []byte) ([]byte, error) {
-//	    return []byte("response"), nil
+//	server.RegisterHandler(ctx, 0x01, func(client Client, payload []byte) {
+//	    response := []byte("response")
+//	    client.Send(ctx, 0x01, response)
 //	})
 //
 //	server.Start(ctx)
@@ -36,25 +37,27 @@ type WebsocketServer interface {
 
 	// RegisterHandler registers a handler function for a specific command ID.
 	//
-	// When a message with the given commandID is received from a client, the handler
-	// function is called with the message payload. The handler can return a response
-	// payload which will be automatically encoded and sent back to the client with
-	// the same command ID.
+	// The handler is executed asynchronously (fire-and-forget pattern).
+	// It receives the client instance and payload, allowing you to send responses
+	// or broadcast messages as needed. Unlike JSON-RPC, there's no automatic
+	// request-response pairing.
 	//
-	// If the handler returns an error, an error message is sent to the client.
+	// When a message with the given commandID is received from a client, the handler
+	// function is called with the client and payload in a separate goroutine.
 	//
 	// Parameters:
 	//   - ctx: Context for cancellation
 	//   - commandID: The uint32 command identifier to handle
-	//   - handler: Function that processes the payload and returns a response
+	//   - handler: Function that processes the payload with access to the client
 	//
 	// Example:
 	//
-	//	server.RegisterHandler(ctx, 0x0100, func(payload []byte) ([]byte, error) {
-	//	    // Process login request
-	//	    return loginResponse, nil
+	//	server.RegisterHandler(ctx, 0x0100, func(client Client, payload []byte) {
+	//	    // Process message and optionally send response
+	//	    response := processMessage(payload)
+	//	    client.Send(ctx, 0x0100, response)
 	//	})
-	RegisterHandler(ctx context.Context, commandID uint32, handler func(payload []byte) ([]byte, error)) error
+	RegisterHandler(ctx context.Context, commandID uint32, handler func(client Client, payload []byte)) error
 
 	// RegisterJSONRPCHandler registers a JSON-RPC 2.0 method handler.
 	//
